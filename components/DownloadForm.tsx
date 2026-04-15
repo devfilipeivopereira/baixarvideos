@@ -116,11 +116,32 @@ export function DownloadForm() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <LoginPanel onLoginSuccess={handleLoginSuccess} disabled={isLoading} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Cookies de sessão</CardTitle>
+          <CardDescription>
+            Cole aqui os cookies copiados do DevTools. No browser: F12 → Application → Cookies → clique no domínio do site → copie os valores como <code>nome=valor; outro=valor2</code>. Ou use o console: <code>document.cookie</code>
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            id="cookies"
+            placeholder="session_id=abc123; auth_token=xyz; wordpress_logged_in_...=..."
+            value={cookies}
+            onChange={(e) => setCookies(e.target.value)}
+            rows={4}
+            disabled={isLoading}
+            className="font-mono text-xs"
+          />
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Extrair stream da página</CardTitle>
           <CardDescription>
-            Cole a URL da página do vídeo e os cookies da sua sessão. Para copiar cookies: DevTools (F12) → Application → Cookies → copie os valores do domínio como <code>nome=valor; outro=valor2</code>
+            Cole a URL da página do vídeo para encontrar automaticamente o link .m3u8.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -131,17 +152,6 @@ export function DownloadForm() {
               placeholder="https://plataforma.com/aula/123"
               value={pageUrl}
               onChange={(e) => setPageUrl(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="cookies">Cookies de sessão (opcional para sites públicos)</Label>
-            <Textarea
-              id="cookies"
-              placeholder="session_id=abc123; auth_token=xyz..."
-              value={cookies}
-              onChange={(e) => setCookies(e.target.value)}
-              rows={3}
               disabled={isLoading}
             />
           </div>
