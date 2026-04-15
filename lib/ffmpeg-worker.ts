@@ -56,7 +56,7 @@ export async function downloadHls(
   onProgress(98, 'Finalizando arquivo...')
 
   const data = ffmpeg.FS('readFile', 'output.mp4')
-  return new Blob([data.buffer], { type: 'video/mp4' })
+  return new Blob([data.buffer as ArrayBuffer], { type: 'video/mp4' })
 }
 
 /**
