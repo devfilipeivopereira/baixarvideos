@@ -10,6 +10,7 @@ import { ProgressBar } from '@/components/ProgressBar'
 import { StatusMessage } from '@/components/StatusMessage'
 import { parseM3u8, resolveSegmentUrls } from '@/lib/hls-parser'
 import { downloadHls, triggerDownload } from '@/lib/ffmpeg-worker'
+import { LoginPanel } from '@/components/LoginPanel'
 
 type Phase = 'idle' | 'extracting' | 'downloading' | 'done' | 'error'
 
@@ -107,8 +108,14 @@ export function DownloadForm() {
 
   const isLoading = phase === 'extracting' || phase === 'downloading'
 
+  const handleLoginSuccess = (newCookies: string) => {
+    setCookies(newCookies)
+    setStatusMsg('Cookies preenchidos automaticamente após login.')
+  }
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
+      <LoginPanel onLoginSuccess={handleLoginSuccess} disabled={isLoading} />
       <Card>
         <CardHeader>
           <CardTitle>Extrair stream da página</CardTitle>
