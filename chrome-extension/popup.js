@@ -8,7 +8,7 @@ function timeAgo(ts) {
 }
 
 function render() {
-  const list = document.getElementById('list')
+  const list  = document.getElementById('list')
   const empty = document.getElementById('empty')
 
   if (currentStreams.length === 0) {
@@ -24,49 +24,45 @@ function render() {
       <div class="meta">${timeAgo(s.timestamp)}</div>
       <div class="actions">
         <button class="btn-copy" data-i="${i}">Copiar URL</button>
-        <button class="btn-del" data-i="${i}">✕</button>
+        <button class="btn-del"  data-i="${i}">✕</button>
       </div>
     </div>
   `).join('')
 }
 
 function load() {
-  chrome.storage.local.get('streams', (r) => {
+  chrome.storage.local.get('streams', function(r) {
     currentStreams = r.streams || []
     render()
   })
 }
 
-// Copiar / remover via delegação no list
-document.getElementById('list').addEventListener('click', (e) => {
-  const copy = e.target.closest('.btn-copy')
-  const del  = e.target.closest('.btn-del')
+document.getElementById('list').addEventListener('click', function(e) {
+  var copy = e.target.closest('.btn-copy')
+  var del  = e.target.closest('.btn-del')
 
   if (copy) {
-    const url = currentStreams[+copy.dataset.i].url
-    navigator.clipboard.writeText(url).then(() => {
+    var url = currentStreams[parseInt(copy.dataset.i)].url
+    navigator.clipboard.writeText(url).then(function() {
       copy.textContent = '✓ Copiado!'
-      setTimeout(() => { copy.textContent = 'Copiar URL' }, 2000)
+      setTimeout(function() { copy.textContent = 'Copiar URL' }, 2000)
     })
   }
 
   if (del) {
-    const i = +del.dataset.i
+    var i = parseInt(del.dataset.i)
     currentStreams.splice(i, 1)
     chrome.storage.local.set({ streams: currentStreams })
-    chrome.action.setBadgeText({ text: currentStreams.length ? String(currentStreams.length) : '' })
     render()
   }
 })
 
 document.getElementById('btnRefresh').addEventListener('click', load)
 
-document.getElementById('btnClear').addEventListener('click', () => {
+document.getElementById('btnClear').addEventListener('click', function() {
   currentStreams = []
   chrome.storage.local.set({ streams: [] })
-  chrome.action.setBadgeText({ text: '' })
   render()
 })
 
-// Inicializar
 load()
