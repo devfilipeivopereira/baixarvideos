@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
-import puppeteer, { Browser } from 'puppeteer-core'
+import puppeteer, { Browser, Page } from 'puppeteer-core'
 import chromium from '@sparticuz/chromium-min'
 import { parseCookiesString, filterLinks, extractDomain } from '@/lib/browse-helpers'
 
 export const runtime = 'nodejs'
+
+const CHROMIUM_URL =
+  'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar'
 
 // Singleton browser — reutilizado entre invocações no mesmo container Vercel
 let browserInstance: Browser | null = null
 
 async function getBrowser(): Promise<Browser> {
   if (browserInstance && browserInstance.isConnected()) return browserInstance
-  const executablePath = await chromium.executablePath(
-    'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar'
-  )
+  browserInstance = null // reset before re-launch
+  const executablePath = await chromium.executablePath(CHROMIUM_URL)
   browserInstance = await puppeteer.launch({
-    args: chromium.args,
+    args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
     executablePath,
     headless: true,
     defaultViewport: { width: 1280, height: 800 },
@@ -23,23 +25,25 @@ async function getBrowser(): Promise<Browser> {
 }
 
 export async function POST(req: NextRequest) {
-  const { url, cookies } = await req.json() as { url: string; cookies: string }
-
-  if (!url) {
-    return NextResponse.json({ error: 'URL é obrigatória.' }, { status: 400 })
-  }
-
-  let validUrl: string
-  try {
-    validUrl = new URL(url).href
-  } catch {
-    return NextResponse.json({ error: 'URL inválida.' }, { status: 400 })
-  }
-
-  const browser = await getBrowser()
-  const page = await browser.newPage()
+  let page: Page | null = null
 
   try {
+    const { url, cookies } = (await req.json()) as { url: string; cookies: string }
+
+    if (!url) {
+      return NextResponse.json({ error: 'URL é obrigatória.' }, { status: 400 })
+    }
+
+    let validUrl: string
+    try {
+      validUrl = new URL(url).href
+    } catch {
+      return NextResponse.json({ error: 'URL inválida.' }, { status: 400 })
+    }
+
+    const browser = await getBrowser()
+    page = await browser.newPage()
+
     // Injetar cookies de sessão
     if (cookies?.trim()) {
       const domain = extractDomain(validUrl)
@@ -93,15 +97,12 @@ export async function POST(req: NextRequest) {
 
     const links = filterLinks(rawLinks, validUrl)
 
-    return NextResponse.json({
-      title,
-      currentUrl: finalUrl,
-      links,
-      streamUrl,
-      pageStatus,
-    })
+    return NextResponse.json({ title, currentUrl: finalUrl, links, streamUrl, pageStatus })
   } catch (err: unknown) {
-    if (err instanceof Error && err.name === 'TimeoutError') {
+    // Invalidar singleton se o browser crashou
+    browserInstance = null
+
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timeout'))) {
       return NextResponse.json(
         { error: 'Tempo limite excedido. Tente novamente ou cole a URL do stream manualmente.' },
         { status: 504 }
@@ -111,6 +112,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 })
   } finally {
     // Fechar a página (não o browser) — evita leak no singleton
-    await page.close()
+    if (page) await page.close().catch(() => {})
   }
 }
