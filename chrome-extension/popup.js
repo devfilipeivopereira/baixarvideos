@@ -10,6 +10,7 @@ function timeAgo(ts) {
 function render() {
   var list  = document.getElementById('list')
   var empty = document.getElementById('empty')
+  if (!list || !empty) return
 
   if (currentStreams.length === 0) {
     empty.style.display = 'block'
@@ -24,7 +25,7 @@ function render() {
       '<div class="meta">' + timeAgo(s.timestamp) + '</div>' +
       '<div class="actions">' +
         '<button class="btn-copy" data-i="' + i + '">Copiar URL</button>' +
-        '<button class="btn-del"  data-i="' + i + '">✕</button>' +
+        '<button class="btn-del" data-i="' + i + '">✕</button>' +
       '</div>' +
     '</div>'
   }).join('')
@@ -32,36 +33,47 @@ function render() {
 
 function load() {
   chrome.storage.local.get('streams', function(r) {
-    currentStreams = r.streams || []
+    currentStreams = (r && r.streams) ? r.streams : []
     render()
   })
 }
 
-document.getElementById('list').addEventListener('click', function(e) {
-  var copy = e.target.closest('.btn-copy')
-  var del  = e.target.closest('.btn-del')
+// Registrar listeners só depois do DOM estar pronto
+document.addEventListener('DOMContentLoaded', function() {
+  var list    = document.getElementById('list')
+  var refresh = document.getElementById('btnRefresh')
+  var clear   = document.getElementById('btnClear')
 
-  if (copy) {
-    var url = currentStreams[parseInt(copy.dataset.i)].url
-    navigator.clipboard.writeText(url).then(function() {
-      copy.textContent = '✓ Copiado!'
-      setTimeout(function() { copy.textContent = 'Copiar URL' }, 2000)
+  if (list) {
+    list.addEventListener('click', function(e) {
+      var copy = e.target.closest('.btn-copy')
+      var del  = e.target.closest('.btn-del')
+
+      if (copy) {
+        var url = currentStreams[parseInt(copy.dataset.i)].url
+        navigator.clipboard.writeText(url).then(function() {
+          copy.textContent = '✓ Copiado!'
+          setTimeout(function() { copy.textContent = 'Copiar URL' }, 2000)
+        })
+      }
+
+      if (del) {
+        currentStreams.splice(parseInt(del.dataset.i), 1)
+        chrome.storage.local.set({ streams: currentStreams })
+        render()
+      }
     })
   }
 
-  if (del) {
-    currentStreams.splice(parseInt(del.dataset.i), 1)
-    chrome.storage.local.set({ streams: currentStreams })
-    render()
+  if (refresh) refresh.addEventListener('click', load)
+
+  if (clear) {
+    clear.addEventListener('click', function() {
+      currentStreams = []
+      chrome.storage.local.set({ streams: [] })
+      render()
+    })
   }
+
+  load()
 })
-
-document.getElementById('btnRefresh').addEventListener('click', load)
-
-document.getElementById('btnClear').addEventListener('click', function() {
-  currentStreams = []
-  chrome.storage.local.set({ streams: [] })
-  render()
-})
-
-load()
