@@ -15,6 +15,18 @@ import { BrowsePanel } from '@/components/BrowsePanel'
 
 type Phase = 'idle' | 'extracting' | 'downloading' | 'done' | 'error'
 
+function SectionLabel({ step, label, hint }: { step: number; label: string; hint?: string }) {
+  return (
+    <div className="flex items-center gap-2 pt-2">
+      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold shrink-0">
+        {step}
+      </span>
+      <span className="font-medium text-sm">{label}</span>
+      {hint && <span className="text-xs text-muted-foreground">— {hint}</span>}
+    </div>
+  )
+}
+
 export function DownloadForm() {
   const [pageUrl, setPageUrl] = useState('')
   const [streamUrl, setStreamUrl] = useState('')
@@ -122,9 +134,11 @@ export function DownloadForm() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-4">
+      <SectionLabel step={1} label="Login automático" hint="opcional" />
       <LoginPanel onLoginSuccess={handleLoginSuccess} disabled={isLoading} />
 
+      <SectionLabel step={2} label="Cookies de sessão" hint="opcional se fez login acima" />
       <Card>
         <CardHeader>
           <CardTitle>Cookies de sessão</CardTitle>
@@ -145,12 +159,14 @@ export function DownloadForm() {
         </CardContent>
       </Card>
 
+      <SectionLabel step={3} label="Navegar no site" hint="opcional — captura stream automaticamente" />
       <BrowsePanel
         cookies={cookies}
         onStreamFound={handleStreamFound}
         disabled={isLoading}
       />
 
+      <SectionLabel step={4} label="Extrair stream da página" hint="para sites com HTML estático" />
       <Card>
         <CardHeader>
           <CardTitle>Extrair stream da página</CardTitle>
@@ -175,6 +191,7 @@ export function DownloadForm() {
         </CardContent>
       </Card>
 
+      <SectionLabel step={5} label="Download do vídeo" />
       <Card>
         <CardHeader>
           <CardTitle>Download do vídeo</CardTitle>
