@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,20 @@ export function DownloadForm() {
   const [statusMsg, setStatusMsg] = useState('')
   const [detectedStream, setDetectedStream] = useState('')
   const [streamType, setStreamType] = useState<'hls' | 'dash' | null>(null)
+
+  // Pré-preencher stream URL vindo da extensão Chrome (?stream=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const fromExtension = params.get('stream')
+    if (fromExtension) {
+      setStreamUrl(fromExtension)
+      setDetectedStream(fromExtension)
+      setStreamType('hls')
+      setStatusMsg('Stream recebido da extensão Chrome.')
+      // Limpar da URL sem recarregar
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
 
   const handleProgress = (percent: number, message: string) => {
     setProgress(percent)
