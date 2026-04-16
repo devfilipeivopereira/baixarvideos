@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BaixarHSL</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -23,19 +22,8 @@
       gap: 10px;
     }
 
-    header svg { flex-shrink: 0; }
-
-    header h1 {
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    }
-
-    header p {
-      font-size: 11px;
-      opacity: 0.8;
-      margin-top: 1px;
-    }
+    header h1 { font-size: 15px; font-weight: 700; }
+    header p  { font-size: 11px; opacity: 0.8; margin-top: 1px; }
 
     .toolbar {
       display: flex;
@@ -54,40 +42,22 @@
       font-weight: 500;
       transition: opacity 0.15s;
     }
-
     .btn:hover { opacity: 0.85; }
-
-    .btn-primary {
-      background: #4f46e5;
-      color: white;
-      flex: 1;
-    }
-
-    .btn-ghost {
-      background: #f3f4f6;
-      color: #374151;
-    }
-
-    .btn-danger {
-      background: #fee2e2;
-      color: #dc2626;
-    }
+    .btn-primary { background: #4f46e5; color: white; flex: 1; }
+    .btn-ghost   { background: #f3f4f6; color: #374151; }
+    .btn-danger  { background: #fee2e2; color: #dc2626; }
+    .copied      { background: #d1fae5 !important; color: #059669 !important; }
 
     .empty {
       padding: 32px 16px;
       text-align: center;
       color: #6b7280;
     }
-
-    .empty svg {
-      margin: 0 auto 10px;
-      opacity: 0.4;
-    }
-
-    .empty p { font-size: 13px; }
+    .empty svg   { margin: 0 auto 10px; opacity: 0.4; display: block; }
+    .empty p     { font-size: 13px; }
     .empty small { font-size: 11px; margin-top: 4px; display: block; opacity: 0.7; }
 
-    .list { max-height: 340px; overflow-y: auto; }
+    .list { max-height: 360px; overflow-y: auto; }
 
     .item {
       padding: 10px 12px;
@@ -97,7 +67,6 @@
       flex-direction: column;
       gap: 6px;
     }
-
     .item:hover { background: #fafafa; }
 
     .item-url {
@@ -108,46 +77,17 @@
       line-height: 1.4;
     }
 
-    .item-meta {
-      font-size: 10px;
-      color: #9ca3af;
-    }
+    .item-meta { font-size: 10px; color: #9ca3af; }
 
-    .item-actions {
-      display: flex;
-      gap: 5px;
-    }
-
-    .item-actions .btn {
-      font-size: 11px;
-      padding: 4px 8px;
-    }
-
-    .copied {
-      color: #059669 !important;
-      background: #d1fae5 !important;
-    }
-
-    .footer {
-      padding: 8px 12px;
-      font-size: 10px;
-      color: #9ca3af;
-      text-align: center;
-      border-top: 1px solid #f3f4f6;
-      background: white;
-    }
-
-    .footer a {
-      color: #4f46e5;
-      text-decoration: none;
-    }
+    .item-actions { display: flex; gap: 5px; }
+    .item-actions .btn { font-size: 11px; padding: 4px 8px; }
   </style>
 </head>
 <body>
 
   <header>
-    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
@@ -159,9 +99,8 @@
   </header>
 
   <div class="toolbar">
-    <button class="btn btn-primary" id="openApp">Abrir BaixarHSL</button>
     <button class="btn btn-ghost" id="refresh">Atualizar</button>
-    <button class="btn btn-danger" id="clearAll">Limpar</button>
+    <button class="btn btn-danger" id="clearAll">Limpar tudo</button>
   </div>
 
   <div id="content">
@@ -171,12 +110,8 @@
         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
       </svg>
       <p>Nenhum stream capturado ainda</p>
-      <small>Navegue até a página do vídeo para capturar o .m3u8</small>
+      <small>Navegue até a página do vídeo e aguarde o player carregar</small>
     </div>
-  </div>
-
-  <div class="footer">
-    Extensão para <a href="https://baixarhsl.vercel.app" target="_blank">BaixarHSL</a>
   </div>
 
   <script src="popup.js"></script>

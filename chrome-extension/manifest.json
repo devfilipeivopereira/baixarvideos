@@ -10,9 +10,6 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "BaixarHSL",
-    "default_icon": {
-      "128": "icon.png"
-    }
+    "default_title": "BaixarHSL"
   }
 }

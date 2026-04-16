@@ -1,5 +1,3 @@
-const APP_URL = 'https://baixarhsl.vercel.app'
-
 function timeAgo(timestamp) {
   const diff = Math.floor((Date.now() - timestamp) / 1000)
   if (diff < 60) return `há ${diff}s`
@@ -18,7 +16,7 @@ function render(streams) {
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
         </svg>
         <p>Nenhum stream capturado ainda</p>
-        <small>Navegue até a página do vídeo para capturar o .m3u8</small>
+        <small>Navegue até a página do vídeo e aguarde o player carregar</small>
       </div>`
     return
   }
@@ -28,40 +26,30 @@ function render(streams) {
       <div class="item-url">${s.url}</div>
       <div class="item-meta">${timeAgo(s.timestamp)}</div>
       <div class="item-actions">
-        <button class="btn btn-primary" data-action="baixar" data-url="${encodeURIComponent(s.url)}">
-          Baixar
-        </button>
-        <button class="btn btn-ghost" data-action="copiar" data-url="${s.url}" data-index="${i}">
+        <button class="btn btn-primary" data-action="copiar" data-url="${s.url}" data-index="${i}">
           Copiar URL
         </button>
-        <button class="btn btn-danger" data-action="remover" data-index="${i}">
-          ✕
-        </button>
+        <button class="btn btn-danger" data-action="remover" data-index="${i}">✕</button>
       </div>
     </div>`).join('')}
   </div>`
 
-  // Event delegation
   content.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]')
     if (!btn) return
 
     const action = btn.dataset.action
-    const url = btn.dataset.url ? decodeURIComponent(btn.dataset.url) : null
+    const url = btn.dataset.url
     const index = btn.dataset.index !== undefined ? parseInt(btn.dataset.index) : null
-
-    if (action === 'baixar') {
-      chrome.tabs.create({ url: `${APP_URL}?stream=${encodeURIComponent(url)}` })
-    }
 
     if (action === 'copiar') {
       navigator.clipboard.writeText(url).then(() => {
-        btn.textContent = 'Copiado!'
+        btn.textContent = '✓ Copiado!'
         btn.classList.add('copied')
         setTimeout(() => {
           btn.textContent = 'Copiar URL'
           btn.classList.remove('copied')
-        }, 1500)
+        }, 2000)
       })
     }
 
@@ -76,20 +64,12 @@ function render(streams) {
   })
 }
 
-// Carregar streams ao abrir popup
 chrome.storage.local.get(['streams'], (result) => {
   render(result.streams || [])
 })
 
-// Botões do toolbar
-document.getElementById('openApp').addEventListener('click', () => {
-  chrome.tabs.create({ url: APP_URL })
-})
-
 document.getElementById('refresh').addEventListener('click', () => {
-  chrome.storage.local.get(['streams'], (result) => {
-    render(result.streams || [])
-  })
+  chrome.storage.local.get(['streams'], (result) => render(result.streams || []))
 })
 
 document.getElementById('clearAll').addEventListener('click', () => {
