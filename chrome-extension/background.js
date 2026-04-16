@@ -1,21 +1,23 @@
-// Monitora todas as requisições e captura URLs .m3u8
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    const url = details.url
-    if (!url.includes('.m3u8')) return
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message.type !== 'stream_found') return
 
-    chrome.storage.local.get(['streams'], (result) => {
-      const streams = result.streams || []
-      if (streams.some((s) => s.url === url)) return
+  const url = message.url
+  if (!url) return
 
-      const entry = { url, tabId: details.tabId, timestamp: Date.now() }
-      const updated = [entry, ...streams].slice(0, 30)
-      chrome.storage.local.set({ streams: updated })
+  chrome.storage.local.get(['streams'], (result) => {
+    const streams = result.streams || []
+    if (streams.some((s) => s.url === url)) return
 
-      chrome.action.setBadgeText({ text: String(updated.length) })
-      chrome.action.setBadgeBackgroundColor({ color: '#4f46e5' })
-    })
-  },
-  { urls: ['<all_urls>'] }
-  // sem 'requestBody' — não é listener bloqueante
-)
+    const entry = {
+      url,
+      tabId: sender.tab?.id ?? -1,
+      timestamp: Date.now(),
+    }
+
+    const updated = [entry, ...streams].slice(0, 30)
+    chrome.storage.local.set({ streams: updated })
+
+    chrome.action.setBadgeText({ text: String(updated.length) })
+    chrome.action.setBadgeBackgroundColor({ color: '#4f46e5' })
+  })
+})
