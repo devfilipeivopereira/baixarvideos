@@ -5,57 +5,38 @@
   <title>BaixarHSL</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      width: 380px; background: #f5f5ff; color: #1e1b4b;
-    }
-    header {
-      background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      color: white; padding: 12px 14px;
-      display: flex; align-items: center; gap: 10px;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; width: 380px; background: #f5f5ff; color: #1e1b4b; }
+    header { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: white; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
     header h1 { font-size: 14px; font-weight: 700; }
-    header p  { font-size: 11px; opacity: 0.8; }
-    .toolbar {
-      display: flex; gap: 6px; padding: 8px 10px;
-      background: white; border-bottom: 1px solid #e5e7eb;
-    }
-    button {
-      font-size: 12px; padding: 5px 10px; border-radius: 6px;
-      border: none; cursor: pointer; font-weight: 500;
-    }
+    header p { font-size: 11px; opacity: 0.8; }
+    .toolbar { display: flex; gap: 6px; padding: 8px 10px; background: white; border-bottom: 1px solid #e5e7eb; }
+    .btn { font-size: 12px; padding: 5px 10px; border-radius: 6px; border: none; cursor: pointer; font-weight: 500; }
     #btnRefresh { background: #f3f4f6; color: #374151; flex: 1; }
-    #btnClear   { background: #fee2e2; color: #dc2626; }
-    #empty {
-      padding: 30px 16px; text-align: center;
-      color: #6b7280; font-size: 13px;
-    }
+    #btnClear { background: #fee2e2; color: #dc2626; }
+    #empty { padding: 30px 16px; text-align: center; color: #6b7280; font-size: 13px; }
     #empty small { display: block; font-size: 11px; margin-top: 4px; opacity: 0.7; }
     #list { max-height: 360px; overflow-y: auto; }
-    .item {
-      padding: 10px 12px; border-bottom: 1px solid #f3f4f6;
-      background: white; display: flex; flex-direction: column; gap: 5px;
-    }
-    .url  { font-size: 11px; font-family: monospace; word-break: break-all; color: #374151; }
+    .item { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; background: white; display: flex; flex-direction: column; gap: 5px; }
+    .url { font-size: 11px; font-family: monospace; word-break: break-all; color: #374151; line-height: 1.4; }
     .meta { font-size: 10px; color: #9ca3af; }
     .actions { display: flex; gap: 5px; }
     .btn-copy { background: #4f46e5; color: white; font-size: 11px; padding: 4px 8px; border-radius: 5px; border: none; cursor: pointer; }
-    .btn-del  { background: #fee2e2; color: #dc2626; font-size: 11px; padding: 4px 8px; border-radius: 5px; border: none; cursor: pointer; }
+    .btn-del { background: #fee2e2; color: #dc2626; font-size: 11px; padding: 4px 8px; border-radius: 5px; border: none; cursor: pointer; }
   </style>
 </head>
 <body>
   <header>
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none"
-      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>
     <div><h1>BaixarHSL</h1><p>Streams capturados automaticamente</p></div>
   </header>
 
   <div class="toolbar">
-    <button id="btnRefresh">Atualizar</button>
-    <button id="btnClear">Limpar tudo</button>
+    <button class="btn" id="btnRefresh">Atualizar</button>
+    <button class="btn" id="btnClear">Limpar tudo</button>
   </div>
 
   <div id="empty">
