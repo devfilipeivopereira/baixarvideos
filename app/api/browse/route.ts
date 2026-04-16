@@ -1,28 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import puppeteer, { Browser, Page } from 'puppeteer-core'
-import chromium from '@sparticuz/chromium'
 import { parseCookiesString, filterLinks, extractDomain } from '@/lib/browse-helpers'
 
 export const runtime = 'nodejs'
 
-// Singleton browser — reutilizado entre invocações no mesmo container Vercel
-let browserInstance: Browser | null = null
+// Singleton para dev local (Browserless gerencia o pool em produção)
+let localBrowser: Browser | null = null
 
-async function getBrowser(): Promise<Browser> {
-  if (browserInstance && browserInstance.isConnected()) return browserInstance
-  browserInstance = null // reset before re-launch
-  const executablePath = await chromium.executablePath()
-  browserInstance = await puppeteer.launch({
-    args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+async function getBrowser(): Promise<{ browser: Browser; isRemote: boolean }> {
+  const token = process.env.BROWSERLESS_TOKEN
+
+  if (token) {
+    // Produção (Vercel): conecta ao Browserless.io via WebSocket
+    const browser = await puppeteer.connect({
+      browserWSEndpoint: `wss://chrome.browserless.io?token=${token}&timeout=25000`,
+    })
+    return { browser, isRemote: true }
+  }
+
+  // Dev local: singleton com @sparticuz/chromium
+  if (localBrowser && localBrowser.isConnected()) {
+    return { browser: localBrowser, isRemote: false }
+  }
+  localBrowser = null
+  const chromium = await import('@sparticuz/chromium')
+  const executablePath = await chromium.default.executablePath()
+  localBrowser = await puppeteer.launch({
+    args: [...chromium.default.args, '--no-sandbox', '--disable-setuid-sandbox'],
     executablePath,
     headless: true,
     defaultViewport: { width: 1280, height: 800 },
   })
-  return browserInstance
+  return { browser: localBrowser, isRemote: false }
 }
 
 export async function POST(req: NextRequest) {
   let page: Page | null = null
+  let browser: Browser | null = null
+  let isRemote = false
 
   try {
     const { url, cookies } = (await req.json()) as { url: string; cookies: string }
@@ -38,7 +53,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL inválida.' }, { status: 400 })
     }
 
-    const browser = await getBrowser()
+    const result = await getBrowser()
+    browser = result.browser
+    isRemote = result.isRemote
     page = await browser.newPage()
 
     // Injetar cookies de sessão
@@ -50,7 +67,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Interceptar respostas .m3u8 de forma passiva (sem setRequestInterception)
+    // Interceptar respostas .m3u8 de forma passiva
     let streamUrl: string | null = null
     page.on('response', (response) => {
       const responseUrl = response.url()
@@ -67,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     const pageStatus = response?.status() ?? 0
 
-    // Detectar sessão expirada: Puppeteer segue redirects automaticamente
+    // Detectar sessão expirada
     const finalUrl = page.url()
     const originalHasLogin = validUrl.toLowerCase().includes('login')
     const finalHasLogin = finalUrl.toLowerCase().includes('login')
@@ -96,8 +113,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ title, currentUrl: finalUrl, links, streamUrl, pageStatus })
   } catch (err: unknown) {
-    // Invalidar singleton se o browser crashou
-    browserInstance = null
+    // Invalidar singleton local se crashou
+    localBrowser = null
 
     if (err instanceof Error && (err.name === 'TimeoutError' || err.message.includes('timeout'))) {
       return NextResponse.json(
@@ -108,7 +125,8 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
     return NextResponse.json({ error: message }, { status: 500 })
   } finally {
-    // Fechar a página (não o browser) — evita leak no singleton
     if (page) await page.close().catch(() => {})
+    // Em produção, desconectar do Browserless após cada requisição
+    if (isRemote && browser) await browser.close().catch(() => {})
   }
 }
