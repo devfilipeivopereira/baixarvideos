@@ -1,79 +1,72 @@
-function timeAgo(timestamp) {
-  const diff = Math.floor((Date.now() - timestamp) / 1000)
-  if (diff < 60) return `há ${diff}s`
-  if (diff < 3600) return `há ${Math.floor(diff / 60)}min`
-  return `há ${Math.floor(diff / 3600)}h`
+let currentStreams = []
+
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000)
+  if (s < 60) return s + 's atrás'
+  if (s < 3600) return Math.floor(s / 60) + 'min atrás'
+  return Math.floor(s / 3600) + 'h atrás'
 }
 
-function render(streams) {
-  const content = document.getElementById('content')
+function render() {
+  const list = document.getElementById('list')
+  const empty = document.getElementById('empty')
 
-  if (!streams || streams.length === 0) {
-    content.innerHTML = `
-      <div class="empty">
-        <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24"
-          fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
-        <p>Nenhum stream capturado ainda</p>
-        <small>Navegue até a página do vídeo e aguarde o player carregar</small>
-      </div>`
+  if (currentStreams.length === 0) {
+    empty.style.display = 'block'
+    list.innerHTML = ''
     return
   }
 
-  content.innerHTML = `<div class="list">${streams.map((s, i) => `
+  empty.style.display = 'none'
+  list.innerHTML = currentStreams.map((s, i) => `
     <div class="item">
-      <div class="item-url">${s.url}</div>
-      <div class="item-meta">${timeAgo(s.timestamp)}</div>
-      <div class="item-actions">
-        <button class="btn btn-primary" data-action="copiar" data-url="${s.url}" data-index="${i}">
-          Copiar URL
-        </button>
-        <button class="btn btn-danger" data-action="remover" data-index="${i}">✕</button>
+      <div class="url">${s.url}</div>
+      <div class="meta">${timeAgo(s.timestamp)}</div>
+      <div class="actions">
+        <button class="btn-copy" data-i="${i}">Copiar URL</button>
+        <button class="btn-del" data-i="${i}">✕</button>
       </div>
-    </div>`).join('')}
-  </div>`
+    </div>
+  `).join('')
+}
 
-  content.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-action]')
-    if (!btn) return
-
-    const action = btn.dataset.action
-    const url = btn.dataset.url
-    const index = btn.dataset.index !== undefined ? parseInt(btn.dataset.index) : null
-
-    if (action === 'copiar') {
-      navigator.clipboard.writeText(url).then(() => {
-        btn.textContent = '✓ Copiado!'
-        btn.classList.add('copied')
-        setTimeout(() => {
-          btn.textContent = 'Copiar URL'
-          btn.classList.remove('copied')
-        }, 2000)
-      })
-    }
-
-    if (action === 'remover') {
-      chrome.storage.local.get(['streams'], (result) => {
-        const updated = (result.streams || []).filter((_, i) => i !== index)
-        chrome.storage.local.set({ streams: updated })
-        chrome.action.setBadgeText({ text: updated.length > 0 ? String(updated.length) : '' })
-        render(updated)
-      })
-    }
+function load() {
+  chrome.storage.local.get('streams', (r) => {
+    currentStreams = r.streams || []
+    render()
   })
 }
 
-chrome.storage.local.get(['streams'], (result) => {
-  render(result.streams || [])
+// Copiar / remover via delegação no list
+document.getElementById('list').addEventListener('click', (e) => {
+  const copy = e.target.closest('.btn-copy')
+  const del  = e.target.closest('.btn-del')
+
+  if (copy) {
+    const url = currentStreams[+copy.dataset.i].url
+    navigator.clipboard.writeText(url).then(() => {
+      copy.textContent = '✓ Copiado!'
+      setTimeout(() => { copy.textContent = 'Copiar URL' }, 2000)
+    })
+  }
+
+  if (del) {
+    const i = +del.dataset.i
+    currentStreams.splice(i, 1)
+    chrome.storage.local.set({ streams: currentStreams })
+    chrome.action.setBadgeText({ text: currentStreams.length ? String(currentStreams.length) : '' })
+    render()
+  }
 })
 
-document.getElementById('refresh').addEventListener('click', () => {
-  chrome.storage.local.get(['streams'], (result) => render(result.streams || []))
-})
+document.getElementById('btnRefresh').addEventListener('click', load)
 
-document.getElementById('clearAll').addEventListener('click', () => {
+document.getElementById('btnClear').addEventListener('click', () => {
+  currentStreams = []
   chrome.storage.local.set({ streams: [] })
   chrome.action.setBadgeText({ text: '' })
-  render([])
+  render()
 })
+
+// Inicializar
+load()
