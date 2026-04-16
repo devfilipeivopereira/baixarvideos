@@ -9,13 +9,21 @@ let localBrowser: Browser | null = null
 
 async function getBrowser(): Promise<{ browser: Browser; isRemote: boolean }> {
   const token = process.env.BROWSERLESS_TOKEN
+  const isVercel = Boolean(process.env.VERCEL)
 
   if (token) {
-    // Produção (Vercel): conecta ao Browserless.io via WebSocket
+    // Produção: conecta ao Browserless.io via WebSocket
     const browser = await puppeteer.connect({
       browserWSEndpoint: `wss://chrome.browserless.io?token=${token}&timeout=25000`,
     })
     return { browser, isRemote: true }
+  }
+
+  if (isVercel) {
+    // Sem token no Vercel — Chrome local não funciona neste ambiente
+    throw new Error(
+      'BROWSERLESS_TOKEN não configurado. Adicione a variável de ambiente no painel do Vercel (Settings → Environment Variables) e faça um novo deploy.'
+    )
   }
 
   // Dev local: singleton com @sparticuz/chromium
