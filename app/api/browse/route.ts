@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import puppeteer, { Browser, Page } from 'puppeteer-core'
-import chromium from '@sparticuz/chromium-min'
+import chromium from '@sparticuz/chromium'
 import { parseCookiesString, filterLinks, extractDomain } from '@/lib/browse-helpers'
 
 export const runtime = 'nodejs'
-
-const CHROMIUM_URL =
-  'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar'
 
 // Singleton browser — reutilizado entre invocações no mesmo container Vercel
 let browserInstance: Browser | null = null
@@ -14,7 +11,7 @@ let browserInstance: Browser | null = null
 async function getBrowser(): Promise<Browser> {
   if (browserInstance && browserInstance.isConnected()) return browserInstance
   browserInstance = null // reset before re-launch
-  const executablePath = await chromium.executablePath(CHROMIUM_URL)
+  const executablePath = await chromium.executablePath()
   browserInstance = await puppeteer.launch({
     args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
     executablePath,

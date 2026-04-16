@@ -14,7 +14,7 @@
     "@base-ui/react": "^1.4.0",
     "@ffmpeg/core": "^0.11.0",
     "@ffmpeg/ffmpeg": "^0.11.6",
-    "@sparticuz/chromium-min": "^123.0.1",
+    "@sparticuz/chromium": "^123.0.1",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
