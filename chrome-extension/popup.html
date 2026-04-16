@@ -1,25 +1,20 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"><title>BaixarHSL</title></head>
-<body style="margin:0;width:380px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5ff;color:#1e1b4b">
-
-  <div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:white;padding:12px 14px;display:flex;align-items:center;gap:10px">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    <div><div style="font-size:14px;font-weight:700">BaixarHSL</div><div style="font-size:11px;opacity:.8">Streams capturados automaticamente</div></div>
+<body style="width:380px;padding:0;margin:0;font-family:sans-serif">
+  <div style="background:#4f46e5;color:white;padding:12px 14px">
+    <b style="font-size:14px">BaixarHSL</b>
+    <div style="font-size:11px;opacity:.8">Streams capturados automaticamente</div>
   </div>
-
-  <div style="display:flex;gap:6px;padding:8px 10px;background:white;border-bottom:1px solid #e5e7eb">
-    <button id="btnRefresh" style="flex:1;font-size:12px;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;background:#f3f4f6;color:#374151;font-weight:500">Atualizar</button>
-    <button id="btnClear"   style="font-size:12px;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;background:#fee2e2;color:#dc2626;font-weight:500">Limpar tudo</button>
+  <div style="padding:8px;display:flex;gap:6px;background:white;border-bottom:1px solid #e5e7eb">
+    <button id="btnRefresh" style="flex:1;padding:5px 10px;border:none;background:#f3f4f6;border-radius:6px;cursor:pointer;font-size:12px">Atualizar</button>
+    <button id="btnClear" style="padding:5px 10px;border:none;background:#fee2e2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">Limpar</button>
   </div>
-
-  <div id="empty" style="padding:30px 16px;text-align:center;color:#6b7280;font-size:13px">
+  <div id="empty" style="padding:24px;text-align:center;color:#6b7280;font-size:13px">
     <p>Nenhum stream capturado ainda</p>
-    <small style="display:block;font-size:11px;margin-top:4px;opacity:.7">Navegue até a página do vídeo e aguarde o player carregar</small>
+    <small>Recarregue a página do vídeo e aguarde o player carregar</small>
   </div>
-
-  <div id="list" style="max-height:360px;overflow-y:auto"></div>
-
+  <div id="list"></div>
   <script src="popup.js"></script>
 </body>
 </html>
