@@ -1,19 +1,16 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html>
 <head><meta charset="UTF-8"><title>BaixarHSL</title></head>
 <body style="width:380px;padding:0;margin:0;font-family:sans-serif">
   <div style="background:#4f46e5;color:white;padding:12px 14px">
     <b style="font-size:14px">BaixarHSL</b>
-    <div style="font-size:11px;opacity:.8">Streams capturados automaticamente</div>
+    <span style="font-size:11px;opacity:.8;margin-left:6px">Streams capturados</span>
   </div>
   <div style="padding:8px;display:flex;gap:6px;background:white;border-bottom:1px solid #e5e7eb">
     <button id="btnRefresh" style="flex:1;padding:5px 10px;border:none;background:#f3f4f6;border-radius:6px;cursor:pointer;font-size:12px">Atualizar</button>
     <button id="btnClear" style="padding:5px 10px;border:none;background:#fee2e2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">Limpar</button>
   </div>
-  <div id="empty" style="padding:24px;text-align:center;color:#6b7280;font-size:13px">
-    <p>Nenhum stream capturado ainda</p>
-    <small>Recarregue a página do vídeo e aguarde o player carregar</small>
-  </div>
+  <p id="status" style="padding:12px;font-size:12px;color:#6b7280;text-align:center">Carregando...</p>
   <div id="list"></div>
   <script src="popup.js"></script>
 </body>
