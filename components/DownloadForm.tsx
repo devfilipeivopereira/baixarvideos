@@ -11,6 +11,7 @@ import { StatusMessage } from '@/components/StatusMessage'
 import { parseM3u8, resolveSegmentUrls } from '@/lib/hls-parser'
 import { downloadHls, triggerDownload } from '@/lib/ffmpeg-worker'
 import { LoginPanel } from '@/components/LoginPanel'
+import { BrowsePanel } from '@/components/BrowsePanel'
 
 type Phase = 'idle' | 'extracting' | 'downloading' | 'done' | 'error'
 
@@ -113,6 +114,13 @@ export function DownloadForm() {
     setStatusMsg('Cookies preenchidos automaticamente após login.')
   }
 
+  const handleStreamFound = (url: string) => {
+    setStreamUrl(url)
+    setDetectedStream(url)
+    setStreamType('hls')
+    setStatusMsg('Stream capturado automaticamente pelo navegador.')
+  }
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <LoginPanel onLoginSuccess={handleLoginSuccess} disabled={isLoading} />
@@ -136,6 +144,12 @@ export function DownloadForm() {
           />
         </CardContent>
       </Card>
+
+      <BrowsePanel
+        cookies={cookies}
+        onStreamFound={handleStreamFound}
+        disabled={isLoading}
+      />
 
       <Card>
         <CardHeader>
