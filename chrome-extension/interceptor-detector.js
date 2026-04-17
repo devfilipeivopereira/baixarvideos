@@ -52,6 +52,8 @@
     if (lower.includes('vimeocdn.com') && (lower.includes('/playlist.json') || lower.includes('/master.json'))) {
       return 'vimeo'
     }
+    // BunnyCDN Media Cage: manifesto HLS com extensão .drm
+    if (/iframe\.mediadelivery\.net|video\.bunnycdn\.com/i.test(lower) && lower.includes('video.drm')) return 'hls'
     if (/\.(mp4|webm|mov|m4v|mkv|ogv|ogg|avi|flv)(?:[?#]|$)/i.test(lower)) return 'progressive'
     return null
   }

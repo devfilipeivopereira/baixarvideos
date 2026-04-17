@@ -65,6 +65,11 @@
     if (/sambatech\.com\.br|sambavideos\.com\.br/i.test(lower)) return true
     if (/vdocipher\.com/i.test(lower) && lower.includes('.m3u8')) return true
     if (/jwpcdn\.com|jwplatform\.com/i.test(lower) && (lower.includes('manifest') || lower.includes('.m3u8') || lower.includes('.mpd'))) return true
+    // BunnyCDN Media Cage: iframe.mediadelivery.net e video.bunnycdn.com
+    // O manifesto HLS é servido com extensão .drm (e.g. video.drm?contextId=...)
+    if (/iframe\.mediadelivery\.net|video\.bunnycdn\.com/i.test(lower) && (lower.includes('video.drm') || lower.includes('.m3u8'))) return true
+    // Panda Video (CDN própria)
+    if (/p-cdn\.com|b-cdn\.net/i.test(lower) && (lower.includes('.m3u8') || lower.includes('manifest'))) return true
     return false
   }
 
@@ -77,6 +82,8 @@
     if (lower.includes('vimeocdn.com') && (lower.includes('/playlist.json') || lower.includes('/master.json'))) {
       return 'vimeo'
     }
+    // BunnyCDN video.drm é um manifesto HLS com extensão diferente
+    if (/iframe\.mediadelivery\.net|video\.bunnycdn\.com/i.test(lower) && lower.includes('video.drm')) return 'hls'
     if (isBrazilianPlatformUrl(url)) return 'hls'
     if (isDirectVideoUrl(url)) return 'progressive'
     return null

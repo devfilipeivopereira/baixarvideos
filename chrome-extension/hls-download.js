@@ -349,6 +349,51 @@
     }
   }
 
+  // ── Vimeo CDN Referer injection ───────────────────────────────────────────
+  // Segmentos /range/prot/ e /avf/ do vimeocdn.com exigem
+  // Referer: https://player.vimeo.com/ ou o CDN retorna 403.
+  // Usamos declarativeNetRequest para injetar o header durante o download.
+
+  var VIMEO_REFERER_RULE_ID = 9001
+
+  async function setVimeoRefererRule() {
+    if (!root.chrome || !root.chrome.declarativeNetRequest) return
+    try {
+      await root.chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [VIMEO_REFERER_RULE_ID],
+        addRules: [{
+          id: VIMEO_REFERER_RULE_ID,
+          priority: 1,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [{
+              header: 'Referer',
+              operation: 'set',
+              value: 'https://player.vimeo.com/',
+            }],
+          },
+          condition: {
+            urlFilter: '||vimeocdn.com/',
+            resourceTypes: ['xmlhttprequest', 'other'],
+          },
+        }],
+      })
+    } catch (error) {
+      void error
+    }
+  }
+
+  async function clearVimeoRefererRule() {
+    if (!root.chrome || !root.chrome.declarativeNetRequest) return
+    try {
+      await root.chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [VIMEO_REFERER_RULE_ID],
+      })
+    } catch (error) {
+      void error
+    }
+  }
+
   async function downloadVimeoPlaylistAsMp4(options) {
     var option = options && options.option ? options.option : null
     var onStatus = options && typeof options.onStatus === 'function'
@@ -381,6 +426,9 @@
 
     ffmpeg.on('progress', progressListener)
 
+    // Injeta Referer para segmentos vimeocdn.com que exigem player.vimeo.com
+    await setVimeoRefererRule()
+
     try {
       var videoBytes = await buildTrackBytes(option.videoTrack, 'Baixando video', 5, 45, onStatus)
       await ffmpeg.writeFile(videoPath, videoBytes)
@@ -405,6 +453,7 @@
       return new Blob([arrayBufferFromUint8Array(output)], { type: 'video/mp4' })
     } finally {
       ffmpeg.off('progress', progressListener)
+      await clearVimeoRefererRule()
     }
   }
 
