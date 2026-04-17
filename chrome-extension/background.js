@@ -15,13 +15,14 @@ function detectMediaType(url) {
   var lower = String(url || '').toLowerCase()
   if (!lower.startsWith('http')) return null
 
-  // Fragmentos adaptativos — ignorar completamente
+  // Fragmentos adaptativos e legendas — ignorar completamente
   if (
     lower.includes('/range/') ||
     lower.includes('/segment/') ||
     lower.includes('/avf/') ||
     lower.includes('.m4s') ||
-    /[?&]range=/.test(lower)
+    /[?&]range=/.test(lower) ||
+    /[?&]ext-subs=/.test(lower)
   ) return null
 
   // Manifesto / protocolo vem primeiro — mais confiável que extensão
@@ -134,13 +135,14 @@ chrome.webRequest.onHeadersReceived.addListener(
     var url = details.url || ''
     var lower = url.toLowerCase()
 
-    // Ignorar fragmentos adaptativos — nunca salvar como stream
+    // Ignorar fragmentos adaptativos e legendas — nunca salvar como stream
     if (
       lower.includes('/range/') ||
       lower.includes('/segment/') ||
       lower.includes('/avf/') ||
       lower.includes('.m4s') ||
-      /[?&]range=/.test(lower)
+      /[?&]range=/.test(lower) ||
+      /[?&]ext-subs=/.test(lower)
     ) return
 
     var ct = ''

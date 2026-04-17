@@ -60,6 +60,10 @@
     return baseUrl
   }
 
+  function isRangeProtSegment(url) {
+    return url ? /\/range\/prot\//i.test(String(url)) : false
+  }
+
   function normalizeSegments(segments, baseUrl) {
     return ensureArray(segments).map(function(segment) {
       if (typeof segment === 'string') {
@@ -68,7 +72,9 @@
 
       if (!segment || typeof segment !== 'object') return null
       return toAbsoluteUrl(segment.url, baseUrl)
-    }).filter(Boolean)
+    }).filter(function(url) {
+      return url && !isRangeProtSegment(url)
+    })
   }
 
   function normalizeTrack(track, playlistUrl, playlistBaseUrl) {

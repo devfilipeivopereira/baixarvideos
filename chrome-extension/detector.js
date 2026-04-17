@@ -27,7 +27,8 @@
       lower.includes('/segment/') ||
       lower.includes('/avf/') ||
       lower.includes('.m4s') ||
-      /[?&]range=/.test(lower)
+      /[?&]range=/.test(lower) ||
+      /[?&]ext-subs=/.test(lower)
     )
   }
 

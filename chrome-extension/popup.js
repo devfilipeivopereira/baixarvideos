@@ -569,12 +569,13 @@ function renderDebug() {
     badge('Interceptor', Boolean(state.interceptorSeen)),
   ].join('')
 
+  var counts = state.counts || {}
   counters.innerHTML =
-    'Requests relevantes: <b>' + String(state.counts.requestsSeen || 0) + '</b><br>' +
-    'Responses relevantes: <b>' + String(state.counts.responsesSeen || 0) + '</b><br>' +
-    'Streams encontrados: <b>' + String(state.counts.streamsFound || 0) + '</b><br>' +
-    'Mensagens: <b>' + String(state.counts.messagesSeen || 0) + '</b><br>' +
-    'Erros: <b>' + String(state.counts.errors || 0) + '</b>'
+    'Requests relevantes: <b>' + String(counts.requestsSeen || 0) + '</b><br>' +
+    'Responses relevantes: <b>' + String(counts.responsesSeen || 0) + '</b><br>' +
+    'Streams encontrados: <b>' + String(counts.streamsFound || 0) + '</b><br>' +
+    'Mensagens: <b>' + String(counts.messagesSeen || 0) + '</b><br>' +
+    'Erros: <b>' + String(counts.errors || 0) + '</b>'
 
   last.innerHTML =
     'Ultimo request: <span style="font-family:monospace">' + escapeHtml(state.lastRequestUrl || '(nenhum)') + '</span><br>' +
