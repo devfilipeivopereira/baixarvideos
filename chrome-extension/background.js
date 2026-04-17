@@ -7,9 +7,9 @@ try {
 
 var STREAMS_KEY = 'streams'
 var DIAG_KEY = 'diagnosticsByTab'
+var VIMEO_CFG_KEY_PREFIX = 'vc_'
 var MAX_STREAMS = 50
 var resolvedCache = new Map()
-var vimeoConfigCache = new Map() // url → body text (intercepted from page)
 
 // ── Detecção de URL de mídia (resiliente, sem depender do detector) ──────────
 function detectMediaType(url) {
@@ -199,8 +199,11 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   // Cache de body do config Vimeo interceptado na página
   if (message.action === 'cache-vimeo-config') {
     if (message.url && message.body) {
-      var cacheKey = dedupeKeyForUrl(message.url, 'vimeo')
-      vimeoConfigCache.set(cacheKey, message.body)
+      var vcKey = VIMEO_CFG_KEY_PREFIX + dedupeKeyForUrl(message.url, 'vimeo')
+      var vcPayload = {}
+      vcPayload[vcKey] = message.body
+      chrome.storage.session.set(vcPayload)
+      console.log('[BaixarHSL] config Vimeo cacheado:', message.url.slice(0, 80), 'bytes:', message.body.length)
       // Invalidar cache de resolução para forçar re-resolução com o body cacheado
       var resolveKey = 'vimeo::' + message.url
       resolvedCache.delete(resolveKey)
@@ -386,16 +389,24 @@ async function resolveStreamDetails(stream) {
       }
 
       // /config → use interceptor-cached body if available (avoids Referer/domain issues)
-      var configCacheKey = dedupeKeyForUrl(stream.url, 'vimeo')
-      var vimeoText = vimeoConfigCache.get(configCacheKey) || null
-      if (!vimeoText) {
+      var configStorageKey = VIMEO_CFG_KEY_PREFIX + dedupeKeyForUrl(stream.url, 'vimeo')
+      var sessionData = await new Promise(function(resolve) {
+        chrome.storage.session.get(configStorageKey, function(r) { resolve(r || {}) })
+      })
+      var vimeoText = sessionData[configStorageKey] || null
+      if (vimeoText) {
+        console.log('[BaixarHSL] usando config Vimeo cacheado para', stream.url.slice(0, 80))
+      } else {
         try {
           var vimeoResp = await fetch(stream.url, { credentials: 'include', cache: 'no-store' })
           if (vimeoResp.ok) {
             vimeoText = await vimeoResp.text()
+            console.log('[BaixarHSL] config Vimeo buscado via fetch:', stream.url.slice(0, 80))
+          } else {
+            console.log('[BaixarHSL] config Vimeo fetch falhou HTTP', vimeoResp.status, stream.url.slice(0, 80))
           }
         } catch (fetchErr) {
-          void fetchErr
+          console.log('[BaixarHSL] config Vimeo fetch erro:', fetchErr && fetchErr.message)
         }
       }
 
