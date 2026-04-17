@@ -41,20 +41,44 @@
     var match = withoutQuery.match(/^(https?:\/\/.+?\/[^/]+\/)v\d+\//i)
     if (match && match[1]) return match[1]
 
-    return absoluteUrl
+    return withoutQuery
+  }
+
+  function extractPlaylistDirectoryUrl(playlistUrl) {
+    var absoluteUrl = toAbsoluteUrl(playlistUrl)
+    if (!absoluteUrl) return null
+
+    try {
+      var parsed = new URL(absoluteUrl)
+      parsed.hash = ''
+      parsed.search = ''
+      var pathname = parsed.pathname || '/'
+      var lastSlashIndex = pathname.lastIndexOf('/')
+      parsed.pathname = lastSlashIndex >= 0 ? pathname.slice(0, lastSlashIndex + 1) : '/'
+      return parsed.href
+    } catch {
+      return null
+    }
   }
 
   function buildTrackBaseUrl(playlistUrl, playlistBaseUrl, trackBaseUrl) {
+    var playlistDirectoryUrl = extractPlaylistDirectoryUrl(playlistUrl)
     var rootUrl = extractPlaylistRootUrl(playlistUrl)
-    if (!rootUrl) return null
+    var baseUrl = playlistDirectoryUrl || rootUrl
+    if (!baseUrl) return null
 
-    var baseUrl = rootUrl
     if (playlistBaseUrl) {
       baseUrl = toAbsoluteUrl(playlistBaseUrl, baseUrl) || baseUrl
     }
 
     if (trackBaseUrl) {
-      baseUrl = toAbsoluteUrl(trackBaseUrl, baseUrl) || baseUrl
+      var trackRaw = String(trackBaseUrl).trim()
+      var trackStartsAtV2 = /^v\d+\//i.test(trackRaw)
+      if (trackStartsAtV2 && rootUrl) {
+        baseUrl = toAbsoluteUrl(trackRaw, rootUrl) || toAbsoluteUrl(trackRaw, baseUrl) || baseUrl
+      } else {
+        baseUrl = toAbsoluteUrl(trackRaw, baseUrl) || baseUrl
+      }
     }
 
     return baseUrl

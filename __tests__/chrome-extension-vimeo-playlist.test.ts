@@ -89,4 +89,30 @@ describe('chrome extension vimeo playlist helpers', () => {
       selectedUrl: playlistUrl + '#video=e9e37227-0290-4df3-a02d-24b7bf12b596&audio=main-audio',
     })
   })
+
+  it('preserves Vimeo tokenized path when playlist base_url is relative to range/prot', () => {
+    const playlistUrl =
+      'https://vod-adaptive-ak.vimeocdn.com/exp=1776462322~acl=%2Fcac209c9-1a9e-43db-abcf-cdf74010c4c9%2Fpsid%3D86a6aa72ba8f173675ee40c060d9434c5a1c38c2d9d11c9b24159ae8c38e2411%2F%2A~hmac=9a45b27544233ae808a1c702a9c54c429df0b34d1d0a77ebbf54cbb2ca399fc9/cac209c9-1a9e-43db-abcf-cdf74010c4c9/psid=86a6aa72ba8f173675ee40c060d9434c5a1c38c2d9d11c9b24159ae8c38e2411/v2/playlist/av/primary/prot/cXNyPTE/playlist.json?omit=av1-hevc'
+
+    const payload = JSON.stringify({
+      base_url: '../../../../../range/prot/',
+      video: [
+        {
+          id: 'video-main',
+          height: 720,
+          bitrate: 1600000,
+          base_url: 'cmFuZ2U9MTU0NS0yOTA4NDQx/avf/117f8c9a-ece5-41ce-9da1-05faa4bcd79d/',
+          segments: [{ url: 'file.mp4?pathsig=abc123' }],
+        },
+      ],
+      audio: [],
+    })
+
+    const details = resolvePlaylistDetails(payload, playlistUrl)
+    expect(details).not.toBeNull()
+
+    const firstVideoSegment = details?.options?.[0]?.videoTrack?.segments?.[0]
+    expect(firstVideoSegment).toContain('/exp=1776462322~acl=')
+    expect(firstVideoSegment).toContain('/v2/range/prot/cmFuZ2U9MTU0NS0yOTA4NDQx/avf/117f8c9a-ece5-41ce-9da1-05faa4bcd79d/file.mp4?pathsig=abc123')
+  })
 })
