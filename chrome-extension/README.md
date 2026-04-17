@@ -1,26 +1,36 @@
-# BaixarHSL — Extensão Chrome
+# BaixarHSL - Extensao Chrome
 
-Captura automaticamente URLs de stream `.m3u8` enquanto você navega, e envia para o BaixarHSL com um clique.
+Extensao para capturar videos incorporados em paginas e baixar direto para o PC, inclusive convertendo HLS nao protegido por DRM para `.mp4`.
 
-## Instalação
+## Instalacao
 
 1. Abra `chrome://extensions`
-2. Ative **Modo de desenvolvedor** (canto superior direito)
-3. Clique em **Carregar sem compactação**
-4. Selecione esta pasta (`chrome-extension/`)
+2. Ative `Modo de desenvolvedor`
+3. Clique em `Carregar sem compactacao`
+4. Selecione esta pasta
 
-## Como usar
+## Fluxo de uso
 
-1. Instale a extensão
-2. Navegue normalmente até a página do vídeo que quer baixar
-3. Clique no ícone da extensão na barra do Chrome
-4. Clique em **Baixar** no stream capturado — abre o BaixarHSL com a URL preenchida
-5. Clique em **Baixar como MP4**
+1. Abra a pagina com o video
+2. Clique em `Atualizar` no popup da extensao
+3. Escolha a resolucao disponivel
+4. Clique em `Baixar no PC`
 
-> O ícone mostra um badge com o número de streams capturados.
+## O que aparece no popup
 
-## Ícone PNG
+- miniatura do video
+- titulo detectado
+- lista de resolucoes disponiveis
+- botao de download direto
+- capturas recentes da aba atual
+- classificacao explicita entre fluxo baixavel, detectado e `DRM/protegido`
+- painel de debug para diagnostico
 
-O arquivo `icon.svg` precisa ser convertido para `icon.png` (128×128).  
-Use qualquer conversor online ou Inkscape.  
-Sem o `icon.png`, a extensão ainda funciona mas sem ícone na barra.
+## Observacoes
+
+- videos Vimeo privados incorporados continuam sendo um foco principal desta extensao
+- a extensao tambem tenta detectar arquivos diretos como `mp4`, `webm`, `mov` e players baseados em `MediaSource`
+- quando o player expuser HLS sem DRM, a extensao baixa os segmentos e converte para `.mp4` localmente
+- DASH ainda e apenas detectado nesta versao
+- durante uma conversao HLS, mantenha o popup aberto ate o download ser iniciado
+- quando houver DRM, a extensao informa que o conteudo esta protegido em vez de falhar silenciosamente

@@ -1,17 +1,90 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>BaixarHSL</title></head>
-<body style="width:380px;padding:0;margin:0;font-family:sans-serif">
-  <div style="background:#4f46e5;color:white;padding:12px 14px">
-    <b style="font-size:14px">BaixarHSL</b>
-    <span style="font-size:11px;opacity:.8;margin-left:6px">Streams capturados</span>
+<head>
+  <meta charset="UTF-8">
+  <title>BaixarHSL</title>
+</head>
+<body style="width:380px;padding:0;margin:0;font-family:Arial,sans-serif;background:#f7f8fa;color:#111827">
+  <div style="background:linear-gradient(135deg,#111827,#1f2937);color:white;padding:14px 16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>
+        <div style="font-size:16px;font-weight:700">BaixarHSL</div>
+        <div style="font-size:11px;opacity:.78">Extensao para capturar e baixar videos</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button id="btnRefresh" style="padding:6px 10px;border:none;border-radius:999px;background:#f3f4f6;color:#111827;font-size:11px;cursor:pointer">Atualizar</button>
+        <button id="btnClear" style="padding:6px 10px;border:none;border-radius:999px;background:#fee2e2;color:#b91c1c;font-size:11px;cursor:pointer">Limpar</button>
+      </div>
+    </div>
   </div>
-  <div style="padding:8px;display:flex;gap:6px;background:white;border-bottom:1px solid #e5e7eb">
-    <button id="btnRefresh" style="flex:1;padding:5px 10px;border:none;background:#f3f4f6;border-radius:6px;cursor:pointer;font-size:12px">Atualizar</button>
-    <button id="btnClear" style="padding:5px 10px;border:none;background:#fee2e2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:12px">Limpar</button>
+
+  <div style="padding:14px">
+    <div style="border-radius:18px;background:white;box-shadow:0 10px 30px rgba(15,23,42,.08);overflow:hidden">
+      <div style="position:relative;aspect-ratio:16/9;background:#111827">
+        <img id="previewImage" alt="Miniatura do video" style="width:100%;height:100%;object-fit:cover;display:none" />
+        <div id="previewFallback" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase">
+          Aguardando video
+        </div>
+      </div>
+
+      <div style="padding:14px">
+        <div id="previewType" style="display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase">
+          Sem stream
+        </div>
+        <div id="previewTitle" style="margin-top:10px;font-size:15px;font-weight:700;line-height:1.35">
+          Nenhum video selecionado
+        </div>
+        <p id="status" style="margin:8px 0 0 0;font-size:12px;line-height:1.45;color:#6b7280">
+          Navegue ate a pagina com o video e clique em Atualizar.
+        </p>
+
+        <div style="margin-top:14px">
+          <label for="qualitySelect" style="display:block;margin-bottom:6px;font-size:11px;font-weight:700;color:#374151;letter-spacing:.05em;text-transform:uppercase">
+            Resolucao
+          </label>
+          <select id="qualitySelect" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:12px;background:white;font-size:13px">
+            <option value="">Sem opcoes</option>
+          </select>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button id="btnPrimaryAction" style="flex:1;padding:10px 12px;border:none;border-radius:12px;background:#16a34a;color:white;font-size:13px;font-weight:700;cursor:pointer">
+            Baixar no PC
+          </button>
+          <button id="btnCopyUrl" style="padding:10px 12px;border:none;border-radius:12px;background:#e5e7eb;color:#111827;font-size:13px;font-weight:600;cursor:pointer">
+            Copiar URL
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.05em;text-transform:uppercase">Capturas recentes</div>
+        <button id="btnDebugToggle" style="padding:5px 8px;border:none;border-radius:999px;background:#111827;color:white;font-size:10px;cursor:pointer">Debug</button>
+      </div>
+      <div id="list" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div id="debugPanel" style="display:none;margin-top:14px;padding:10px;border:1px solid #e5e7eb;border-radius:14px;background:white">
+      <p id="debugSummary" style="margin:0 0 8px 0;font-size:12px;color:#374151">Carregando diagnostico...</p>
+      <div id="debugBadges" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+      <div id="debugCounters" style="font-size:11px;color:#4b5563;line-height:1.5;margin-bottom:8px"></div>
+      <div id="debugLast" style="font-size:11px;color:#4b5563;line-height:1.5;margin-bottom:8px"></div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button id="btnRunDebug" style="flex:1;padding:7px 8px;border:none;background:#dbeafe;color:#1d4ed8;border-radius:10px;cursor:pointer;font-size:11px">Testar nesta aba</button>
+        <button id="btnCopyDebug" style="flex:1;padding:7px 8px;border:none;background:#ecfdf5;color:#047857;border-radius:10px;cursor:pointer;font-size:11px">Copiar diagnostico</button>
+      </div>
+      <div id="debugEvents" style="max-height:170px;overflow:auto;border-top:1px solid #f3f4f6;padding-top:8px;font-size:10px;color:#374151"></div>
+    </div>
   </div>
-  <p id="status" style="padding:12px;font-size:12px;color:#6b7280;text-align:center">Carregando...</p>
-  <div id="list"></div>
+
+  <script src="stream-selection.js"></script>
+  <script src="popup-curation.js"></script>
+  <script src="vendor/ffmpeg/ffmpeg.js"></script>
+  <script src="hls.js"></script>
+  <script src="vimeo-playlist.js"></script>
+  <script src="hls-download.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
