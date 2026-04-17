@@ -388,22 +388,64 @@ async function resolveStreamDetails(stream) {
         return null
       }
 
-      // /config → use interceptor-cached body if available (avoids Referer/domain issues)
-      var configStorageKey = VIMEO_CFG_KEY_PREFIX + dedupeKeyForUrl(stream.url, 'vimeo')
-      var sessionData = await new Promise(function(resolve) {
-        chrome.storage.session.get(configStorageKey, function(r) { resolve(r || {}) })
-      })
-      var vimeoText = sessionData[configStorageKey] || null
-      if (vimeoText) {
-        console.log('[BaixarHSL] usando config Vimeo cacheado para', stream.url.slice(0, 80))
-      } else {
+      // /config → try fetching from within the page's iframe (correct Referer) first,
+      // then fall back to session cache, then direct SW fetch
+      var vimeoText = null
+
+      // 1. Try scripting.executeScript in the Vimeo player iframe (same-origin, correct Referer)
+      var scriptingTabId = typeof stream.tabId === 'number' && stream.tabId > 0 ? stream.tabId : -1
+      if (scriptingTabId > 0 && chrome.scripting && chrome.scripting.executeScript) {
+        try {
+          var scriptUrl = stream.url
+          var scriptResults = await chrome.scripting.executeScript({
+            target: { tabId: scriptingTabId, allFrames: true },
+            world: 'MAIN',
+            func: function(configUrl) {
+              if (typeof window === 'undefined') return null
+              var host = window.location.hostname || ''
+              if (host !== 'player.vimeo.com') return null
+              return fetch(configUrl, { credentials: 'include', cache: 'no-store' })
+                .then(function(r) { return r.ok ? r.text() : null })
+                .catch(function() { return null })
+            },
+            args: [scriptUrl],
+          })
+          if (Array.isArray(scriptResults)) {
+            for (var si = 0; si < scriptResults.length; si++) {
+              var sr = scriptResults[si]
+              if (sr && sr.result && typeof sr.result === 'string' && sr.result.length > 10) {
+                vimeoText = sr.result
+                console.log('[BaixarHSL] config Vimeo via scripting, bytes:', vimeoText.length)
+                break
+              }
+            }
+          }
+        } catch (scriptErr) {
+          console.log('[BaixarHSL] scripting.executeScript falhou:', scriptErr && scriptErr.message)
+        }
+      }
+
+      // 2. Fall back to session-cached body from interceptor
+      if (!vimeoText) {
+        var configStorageKey = VIMEO_CFG_KEY_PREFIX + dedupeKeyForUrl(stream.url, 'vimeo')
+        var sessionData = await new Promise(function(resolve) {
+          chrome.storage.session.get(configStorageKey, function(r) { resolve(r || {}) })
+        })
+        vimeoText = sessionData[configStorageKey] || null
+        if (vimeoText) {
+          console.log('[BaixarHSL] config Vimeo do cache de sessão, bytes:', vimeoText.length)
+        }
+      }
+
+      // 3. Fall back to direct SW fetch (may fail if domain-restricted)
+      if (!vimeoText) {
         try {
           var vimeoResp = await fetch(stream.url, { credentials: 'include', cache: 'no-store' })
           if (vimeoResp.ok) {
             vimeoText = await vimeoResp.text()
-            console.log('[BaixarHSL] config Vimeo buscado via fetch:', stream.url.slice(0, 80))
+            console.log('[BaixarHSL] config Vimeo via fetch direto, bytes:', vimeoText.length)
           } else {
-            console.log('[BaixarHSL] config Vimeo fetch falhou HTTP', vimeoResp.status, stream.url.slice(0, 80))
+            console.log('[BaixarHSL] config Vimeo fetch direto falhou HTTP', vimeoResp.status)
           }
         } catch (fetchErr) {
           console.log('[BaixarHSL] config Vimeo fetch erro:', fetchErr && fetchErr.message)
