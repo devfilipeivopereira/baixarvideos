@@ -31,20 +31,32 @@
     })
 
     if (!response.ok) {
-      throw new Error('Falha ao buscar manifesto HLS: HTTP ' + response.status)
+      throw new Error(
+        'Falha ao buscar manifesto: HTTP ' + response.status +
+        ' → ' + String(url).slice(0, 150)
+      )
     }
 
     return response.text()
   }
 
-  async function fetchBytes(url) {
-    var response = await fetch(url, {
+  async function fetchBytes(url, extraHeaders) {
+    var options = {
       cache: 'no-store',
       credentials: 'include',
-    })
+    }
+
+    if (extraHeaders) {
+      options.headers = extraHeaders
+    }
+
+    var response = await fetch(url, options)
 
     if (!response.ok) {
-      throw new Error('Falha ao baixar recurso HLS: HTTP ' + response.status)
+      throw new Error(
+        'Falha ao baixar segmento: HTTP ' + response.status +
+        ' → ' + String(url).slice(0, 150)
+      )
     }
 
     return new Uint8Array(await response.arrayBuffer())

@@ -51,6 +51,25 @@ function detectMediaType(url) {
   return null
 }
 
+// ── Normalização de URL para deduplicação ────────────────────────────────────
+function dedupeKeyForUrl(url, type) {
+  if (type !== 'vimeo') return url
+
+  // Para URLs de config do Vimeo, ignorar params de rastreio (dnt, app_id)
+  // mantendo apenas o param 'h' (token de vídeo privado)
+  try {
+    var parsed = new URL(url)
+    if (/player\.vimeo\.com\/video\/\d+\/config/i.test(parsed.pathname)) {
+      var h = parsed.searchParams.get('h')
+      return parsed.origin + parsed.pathname + (h ? '?h=' + h : '')
+    }
+  } catch (ignore) {
+    void ignore
+  }
+
+  return url
+}
+
 // ── Salvar stream capturado ──────────────────────────────────────────────────
 function saveStream(url, type, tabId, source) {
   if (!url || !type) return
@@ -58,8 +77,11 @@ function saveStream(url, type, tabId, source) {
   chrome.storage.local.get(STREAMS_KEY, function(r) {
     var streams = Array.isArray(r[STREAMS_KEY]) ? r[STREAMS_KEY] : []
 
-    // Deduplicate
-    var exists = streams.some(function(s) { return s.url === url })
+    // Deduplicar — normalizar URLs do Vimeo config antes de comparar
+    var incomingKey = dedupeKeyForUrl(url, type)
+    var exists = streams.some(function(s) {
+      return dedupeKeyForUrl(s.url, s.type) === incomingKey
+    })
     if (exists) return
 
     var record = {
@@ -109,6 +131,18 @@ chrome.webRequest.onBeforeRequest.addListener(
 // Também inspeciona headers de resposta (captura por Content-Type)
 chrome.webRequest.onHeadersReceived.addListener(
   function(details) {
+    var url = details.url || ''
+    var lower = url.toLowerCase()
+
+    // Ignorar fragmentos adaptativos — nunca salvar como stream
+    if (
+      lower.includes('/range/') ||
+      lower.includes('/segment/') ||
+      lower.includes('/avf/') ||
+      lower.includes('.m4s') ||
+      /[?&]range=/.test(lower)
+    ) return
+
     var ct = ''
     if (Array.isArray(details.responseHeaders)) {
       for (var i = 0; i < details.responseHeaders.length; i++) {
@@ -121,12 +155,23 @@ chrome.webRequest.onHeadersReceived.addListener(
     }
 
     var type = null
-    if (ct.includes('mpegurl') || ct.includes('x-mpegurl')) type = 'hls'
-    else if (ct.includes('dash') || ct.includes('mpd')) type = 'dash'
-    else if (ct.includes('video/mp4') || ct.includes('video/webm')) type = 'progressive'
+    if (ct.includes('mpegurl') || ct.includes('x-mpegurl')) {
+      // Verificar se é playlist Vimeo antes de classificar como HLS
+      if (lower.includes('vimeocdn.com') && (lower.includes('playlist.json') || lower.includes('master.json'))) {
+        type = 'vimeo'
+      } else {
+        type = 'hls'
+      }
+    } else if (ct.includes('dash') || ct.includes('mpd')) {
+      type = 'dash'
+    } else if (ct.includes('video/mp4') || ct.includes('video/webm')) {
+      // Não salvar como progressive se for URL de CDN adaptativo sem ser download direto
+      if (lower.includes('vimeocdn.com')) return
+      type = 'progressive'
+    }
 
     if (!type) return
-    saveStream(details.url, type, details.tabId, 'headers')
+    saveStream(url, type, details.tabId, 'headers')
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
