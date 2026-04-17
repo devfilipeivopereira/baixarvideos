@@ -11,6 +11,7 @@ var backgroundResponsive = false
 var debugOpen = false
 var currentListBusy = false
 var currentResolveToken = 0
+var currentResolveRetryTimer = null
 var currentActionMessage = ''
 var currentActionBusy = false
 var downloadsApiAvailable = Boolean(chrome.downloads && chrome.downloads.download)
@@ -206,7 +207,12 @@ function resolveStreamDetailsAsync(stream) {
   })
 }
 
-async function refreshResolvedItems() {
+async function refreshResolvedItems(retryCount) {
+  var attempt = Number(retryCount || 0)
+  if (attempt === 0 && currentResolveRetryTimer) {
+    clearTimeout(currentResolveRetryTimer)
+    currentResolveRetryTimer = null
+  }
   var token = ++currentResolveToken
   var scopedStreams = getScopedStreams()
 
@@ -258,6 +264,25 @@ async function refreshResolvedItems() {
   currentListBusy = false
   syncSelectedResolvedItem(currentResolvedItems)
   renderStreams()
+
+  // Vimeo config can arrive milliseconds after the first resolve attempt.
+  // Retry a few times when we have Vimeo candidates but still no resolved item.
+  if (currentResolvedItems.length === 0 && attempt < 4) {
+    var hasVimeoCandidate = scopedStreams.some(function(stream) {
+      return Boolean(stream && stream.type === 'vimeo')
+    })
+
+    if (hasVimeoCandidate) {
+      if (currentResolveRetryTimer) {
+        clearTimeout(currentResolveRetryTimer)
+      }
+      currentResolveRetryTimer = setTimeout(function() {
+        if (token !== currentResolveToken) return
+        currentResolveRetryTimer = null
+        refreshResolvedItems(attempt + 1)
+      }, 650)
+    }
+  }
 }
 
 function getSelectedOption() {

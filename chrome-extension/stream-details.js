@@ -267,28 +267,12 @@
 
     var metadata = extractVimeoMetadata(payload, baseUrl)
 
-    // Check for DRM before anything else
+    // Detect DRM markers, but only block if no playable URL is available.
     var files = parsed && parsed.request && parsed.request.files ? parsed.request.files : null
     var isDrmProtected = Boolean(
       files && (hasDrmFlag(files, 'hls') || hasDrmFlag(files, 'dash')) &&
       !files.progressive
     )
-
-    if (isDrmProtected) {
-      return {
-        blockReason: 'Conteudo protegido por DRM. A extensao nao pode baixar esse stream.',
-        canDownloadDash: false,
-        canDownloadDirect: false,
-        canDownloadHls: false,
-        canDownloadVimeoPlaylist: false,
-        isDrmProtected: true,
-        options: [],
-        selectedType: 'drm',
-        selectedUrl: null,
-        thumbnailUrl: metadata.thumbnailUrl,
-        title: metadata.title,
-      }
-    }
 
     // Progressive options — filter out adaptive range fragments
     var allOptions = extractVimeoDownloadOptions(payload, baseUrl)
@@ -344,6 +328,23 @@
           selectedType = nestedVimeoMatch.type
           break
         }
+      }
+    }
+
+    var selectedAdaptiveType = selectedType === 'hls' || selectedType === 'dash'
+    if (isDrmProtected && (selectedAdaptiveType || !selectedUrl)) {
+      return {
+        blockReason: 'Conteudo protegido por DRM. A extensao nao pode baixar esse stream.',
+        canDownloadDash: false,
+        canDownloadDirect: false,
+        canDownloadHls: false,
+        canDownloadVimeoPlaylist: false,
+        isDrmProtected: true,
+        options: [],
+        selectedType: 'drm',
+        selectedUrl: null,
+        thumbnailUrl: metadata.thumbnailUrl,
+        title: metadata.title,
       }
     }
 
