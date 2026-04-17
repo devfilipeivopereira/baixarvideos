@@ -24,11 +24,36 @@
     }).join('\n')
   }
 
-  async function fetchText(url) {
-    var response = await fetch(url, {
+  function isVimeoCdnUrl(url) {
+    try {
+      var host = new URL(String(url || '')).hostname.toLowerCase()
+      return host === 'vimeocdn.com' || host.endsWith('.vimeocdn.com')
+    } catch {
+      return false
+    }
+  }
+
+  function buildFetchOptions(url, extraHeaders) {
+    var options = {
       cache: 'no-store',
       credentials: 'include',
-    })
+    }
+
+    if (extraHeaders) {
+      options.headers = extraHeaders
+    }
+
+    // Vimeo range/prot and avf segments require a player.vimeo.com referrer.
+    if (isVimeoCdnUrl(url)) {
+      options.referrer = 'https://player.vimeo.com/'
+      options.referrerPolicy = 'strict-origin-when-cross-origin'
+    }
+
+    return options
+  }
+
+  async function fetchText(url) {
+    var response = await fetch(url, buildFetchOptions(url))
 
     if (!response.ok) {
       throw new Error(
@@ -41,16 +66,7 @@
   }
 
   async function fetchBytes(url, extraHeaders) {
-    var options = {
-      cache: 'no-store',
-      credentials: 'include',
-    }
-
-    if (extraHeaders) {
-      options.headers = extraHeaders
-    }
-
-    var response = await fetch(url, options)
+    var response = await fetch(url, buildFetchOptions(url, extraHeaders))
 
     if (!response.ok) {
       throw new Error(
