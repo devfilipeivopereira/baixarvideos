@@ -15,6 +15,15 @@ function detectMediaType(url) {
   var lower = String(url || '').toLowerCase()
   if (!lower.startsWith('http')) return null
 
+  // Fragmentos adaptativos — ignorar completamente
+  if (
+    lower.includes('/range/') ||
+    lower.includes('/segment/') ||
+    lower.includes('/avf/') ||
+    lower.includes('.m4s') ||
+    /[?&]range=/.test(lower)
+  ) return null
+
   // Manifesto / protocolo vem primeiro — mais confiável que extensão
   if (lower.includes('.m3u8')) return 'hls'
   if (lower.includes('.mpd')) return 'dash'
@@ -22,8 +31,9 @@ function detectMediaType(url) {
   // Plataformas brasileiras: verificar antes da extensão .mp4 porque
   // essas URLs costumam ter .mp4 no caminho mas retornam HLS ou redirect HTML
   if (/pandavideo\.com\.br|pandacdn\.com/i.test(lower)) return 'hls'
-  if (/player\.vimeo\.com\/video/i.test(lower)) return 'hls'
-  if (/vimeo\.com\/video/i.test(lower) && (lower.includes('playlist.json') || lower.includes('master.json'))) return 'hls'
+  if (/player\.vimeo\.com\/video\/\d+\/config/i.test(lower)) return 'vimeo'
+  if (lower.includes('vimeocdn.com') && (lower.includes('playlist.json') || lower.includes('master.json'))) return 'vimeo'
+  if (/skyfire\.vimeocdn\.com|vod-adaptive-ak\.vimeocdn\.com/i.test(lower) && (lower.includes('playlist.json') || lower.includes('master.json'))) return 'vimeo'
   if (/hotmart|herospark|eduzz|kiwify|sparkle|estrategia|curseduca/i.test(lower) && lower.includes('manifest')) return 'hls'
   if (/brightcove\.net|bcovlive\.io/i.test(lower) && (lower.includes('manifest') || lower.includes('.m3u8') || lower.includes('.mpd'))) return 'hls'
   if (/sambatech\.com\.br|sambavideos\.com\.br/i.test(lower)) return 'hls'
@@ -283,16 +293,41 @@ async function resolveStreamDetails(stream) {
       }
     }
 
-    if (stream.type === 'vimeo' && self.BaixarHSLDetector) {
-      // Deixar o fluxo Vimeo para o stream-details
+    if (stream.type === 'vimeo') {
       var vimeoResp = await fetch(stream.url, { credentials: 'include', cache: 'no-store' })
       if (!vimeoResp.ok) throw new Error('HTTP ' + vimeoResp.status)
       var vimeoText = await vimeoResp.text()
+      var vimeoUrlLower = stream.url.toLowerCase()
 
+      // playlist.json / master.json → segmented Vimeo playlist parser
+      if (
+        (vimeoUrlLower.includes('playlist.json') || vimeoUrlLower.includes('master.json')) &&
+        self.BaixarHSLVimeoPlaylist
+      ) {
+        var playlistDetails = self.BaixarHSLVimeoPlaylist.resolvePlaylistDetails(vimeoText, stream.url)
+        if (playlistDetails && Array.isArray(playlistDetails.options) && playlistDetails.options.length > 0) {
+          return {
+            canDownloadVimeoPlaylist: true,
+            canDownloadDirect: false,
+            canDownloadHls: false,
+            canDownloadDash: false,
+            isDrmProtected: false,
+            options: playlistDetails.options,
+            selectedType: 'vimeo-playlist',
+            selectedUrl: playlistDetails.selectedUrl,
+            title: stream.title || '',
+            thumbnailUrl: stream.thumbnailUrl || '',
+            filename: (stream.title || 'video') + '.mp4',
+          }
+        }
+      }
+
+      // /config → Vimeo player config parser
       if (self.BaixarHSLStreamDetails) {
         var details = self.BaixarHSLStreamDetails.resolveVimeoStreamDetails(vimeoText, stream.url)
         details.title = details.title || stream.title || ''
         details.thumbnailUrl = details.thumbnailUrl || stream.thumbnailUrl || ''
+        details.filename = (details.title || 'video') + '.mp4'
         return details
       }
     }

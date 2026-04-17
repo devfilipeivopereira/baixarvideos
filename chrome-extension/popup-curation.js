@@ -69,6 +69,7 @@
     return (
       lower.includes('/range/') ||
       lower.includes('/segment/') ||
+      lower.includes('/avf/') ||
       lower.includes('.m4s') ||
       /[?&]range=/.test(lower)
     )
