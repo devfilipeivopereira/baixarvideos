@@ -46,11 +46,12 @@
     var lower = String(url || '').toLowerCase()
     if (lower.includes('.m3u8')) return 'hls'
     if (lower.includes('.mpd')) return 'dash'
-    if (/\.(mp4|webm|mov|m4v|ogv|ogg)(?:[?#]|$)/i.test(lower)) return 'progressive'
+    if (/\.ism\//i.test(lower)) return 'hls'
     if (isVimeoPlayerConfigUrl(url)) return 'vimeo'
     if (lower.includes('vimeocdn.com') && (lower.includes('/playlist.json') || lower.includes('/master.json'))) {
       return 'vimeo'
     }
+    if (/\.(mp4|webm|mov|m4v|mkv|ogv|ogg|avi|flv)(?:[?#]|$)/i.test(lower)) return 'progressive'
     return null
   }
 

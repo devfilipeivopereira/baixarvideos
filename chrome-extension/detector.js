@@ -31,7 +31,11 @@
   }
 
   function isDirectVideoUrl(url) {
-    return /\.(mp4|webm|mov|m4v|ogv|ogg)(?:[?#]|$)/i.test(String(url || ''))
+    return /\.(mp4|webm|mov|m4v|mkv|ogv|ogg|avi|flv)(?:[?#]|$)/i.test(String(url || ''))
+  }
+
+  function isSmoothStreamingUrl(url) {
+    return /\.ism\//i.test(String(url || ''))
   }
 
   function buildVimeoConfigUrl(url, baseUrl) {
@@ -67,12 +71,13 @@
     var lower = url.toLowerCase()
     if (lower.includes('.m3u8')) return 'hls'
     if (lower.includes('.mpd')) return 'dash'
-    if (isDirectVideoUrl(url)) return 'progressive'
+    if (isSmoothStreamingUrl(url)) return 'hls'
     if (isVimeoPlayerConfigUrl(url)) return 'vimeo'
     if (lower.includes('vimeocdn.com') && (lower.includes('/playlist.json') || lower.includes('/master.json'))) {
       return 'vimeo'
     }
     if (isBrazilianPlatformUrl(url)) return 'hls'
+    if (isDirectVideoUrl(url)) return 'progressive'
     return null
   }
 

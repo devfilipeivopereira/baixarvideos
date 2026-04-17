@@ -64,8 +64,28 @@
     return 0
   }
 
+  function isPartialFragmentUrl(url) {
+    var lower = String(url || '').toLowerCase()
+    return (
+      lower.includes('/range/') ||
+      lower.includes('/segment/') ||
+      lower.includes('.m4s') ||
+      /[?&]range=/.test(lower)
+    )
+  }
+
+  function hasRealDownloadableOptions(details) {
+    if (!details || !Array.isArray(details.options) || details.options.length === 0) return false
+    return details.options.some(function(opt) {
+      return opt && opt.url && !isPartialFragmentUrl(opt.url)
+    })
+  }
+
   function isDownloadable(details) {
-    return Boolean(getDownloadMode(details))
+    if (!getDownloadMode(details)) return false
+    // If all options are partial adaptive fragment URLs, this entry is not downloadable
+    if (details.canDownloadDirect && !hasRealDownloadableOptions(details)) return false
+    return true
   }
 
   function buildOptionsFingerprint(details) {

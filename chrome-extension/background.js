@@ -14,16 +14,30 @@ var resolvedCache = new Map()
 function detectMediaType(url) {
   var lower = String(url || '').toLowerCase()
   if (!lower.startsWith('http')) return null
+
+  // Manifesto / protocolo vem primeiro — mais confiável que extensão
   if (lower.includes('.m3u8')) return 'hls'
   if (lower.includes('.mpd')) return 'dash'
-  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(lower)) return 'progressive'
-  if (/pandavideo|pandacdn|vimeo\.com\/video|player\.vimeo\.com\/video/i.test(lower)) return 'hls'
-  if (/hotmart|herospark|eduzz|kiwify|sparkle|estrategia|curseduca|brightcove/i.test(lower) && lower.includes('manifest')) return 'hls'
-  // Usa detector se disponível
+
+  // Plataformas brasileiras: verificar antes da extensão .mp4 porque
+  // essas URLs costumam ter .mp4 no caminho mas retornam HLS ou redirect HTML
+  if (/pandavideo\.com\.br|pandacdn\.com/i.test(lower)) return 'hls'
+  if (/player\.vimeo\.com\/video/i.test(lower)) return 'hls'
+  if (/vimeo\.com\/video/i.test(lower) && (lower.includes('playlist.json') || lower.includes('master.json'))) return 'hls'
+  if (/hotmart|herospark|eduzz|kiwify|sparkle|estrategia|curseduca/i.test(lower) && lower.includes('manifest')) return 'hls'
+  if (/brightcove\.net|bcovlive\.io/i.test(lower) && (lower.includes('manifest') || lower.includes('.m3u8') || lower.includes('.mpd'))) return 'hls'
+  if (/sambatech\.com\.br|sambavideos\.com\.br/i.test(lower)) return 'hls'
+  if (/jwpcdn\.com|jwplatform\.com/i.test(lower) && (lower.includes('manifest') || lower.includes('.m3u8'))) return 'hls'
+
+  // Usa detector se disponível (inclui mais padrões)
   if (self.BaixarHSLDetector && typeof self.BaixarHSLDetector.detectStreamFromRequest === 'function') {
     var match = self.BaixarHSLDetector.detectStreamFromRequest(url)
     if (match) return match.type
   }
+
+  // Extensão de arquivo de vídeo direto — só depois de descartar plataformas
+  if (/\.(mp4|webm|mov|m4v)(\?|$)/i.test(lower)) return 'progressive'
+
   return null
 }
 
@@ -132,20 +146,40 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     return true
   }
 
-  // Download direto (progressive)
+  // Download direto (progressive) — com preflight para detectar HTML
   if (message.action === 'downloadResolvedStream') {
     var dlUrl = message.url ? String(message.url) : ''
     if (!dlUrl) { sendResponse({ ok: false, error: 'URL ausente' }); return false }
 
-    chrome.downloads.download({
-      url: dlUrl,
-      filename: String(message.filename || 'video.mp4'),
-      saveAs: true,
-    }, function(id) {
-      var err = chrome.runtime.lastError
-      if (err) { sendResponse({ ok: false, error: err.message }); return }
-      sendResponse({ ok: true, downloadId: id })
-    })
+    fetch(dlUrl, { method: 'HEAD', credentials: 'include', cache: 'no-store' })
+      .then(function(r) {
+        var ct = (r.headers.get('content-type') || '').toLowerCase()
+        if (ct.includes('text/html') || ct.includes('application/xhtml')) {
+          sendResponse({ ok: false, error: 'O servidor retornou uma pagina HTML (token expirado ou login necessario). Tente recarregar a pagina do video e clique em Atualizar.' })
+          return
+        }
+        chrome.downloads.download({
+          url: dlUrl,
+          filename: String(message.filename || 'video.mp4'),
+          saveAs: true,
+        }, function(id) {
+          var err = chrome.runtime.lastError
+          if (err) { sendResponse({ ok: false, error: err.message }); return }
+          sendResponse({ ok: true, downloadId: id })
+        })
+      })
+      .catch(function() {
+        // HEAD falhou (CORS, rede) — tenta download direto assim mesmo
+        chrome.downloads.download({
+          url: dlUrl,
+          filename: String(message.filename || 'video.mp4'),
+          saveAs: true,
+        }, function(id) {
+          var err = chrome.runtime.lastError
+          if (err) { sendResponse({ ok: false, error: err.message }); return }
+          sendResponse({ ok: true, downloadId: id })
+        })
+      })
     return true
   }
 
@@ -263,7 +297,23 @@ async function resolveStreamDetails(stream) {
       }
     }
 
-    // Progressive / fallback
+    // DRM / MediaSource — não tem download direto
+    if (stream.type === 'drm' || stream.type === 'media-source') {
+      return {
+        isDrmProtected: stream.type === 'drm',
+        blockReason: stream.type === 'drm'
+          ? 'Conteudo protegido por DRM. A extensao nao pode baixar esse stream.'
+          : 'Player com MediaSource detectado. Nao ha URL direta para download.',
+        options: [],
+        selectedType: stream.type,
+        selectedUrl: stream.url,
+        title: stream.title || '',
+        thumbnailUrl: stream.thumbnailUrl || '',
+        filename: (stream.title || 'video') + '.mp4',
+      }
+    }
+
+    // Progressive — URL de arquivo de video direto
     return {
       canDownloadDirect: true,
       isDrmProtected: false,

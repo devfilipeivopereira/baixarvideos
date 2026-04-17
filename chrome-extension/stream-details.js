@@ -233,6 +233,29 @@
     return null
   }
 
+  function isPartialFragmentUrl(url) {
+    var lower = String(url || '').toLowerCase()
+    return (
+      lower.includes('/range/') ||
+      lower.includes('/segment/') ||
+      lower.includes('.m4s') ||
+      /[?&]range=/.test(lower)
+    )
+  }
+
+  function hasDrmFlag(filesSection, key) {
+    if (!filesSection || !filesSection[key]) return false
+    var section = filesSection[key]
+    if (section.drm === true) return true
+    var cdns = section.cdns && typeof section.cdns === 'object' ? section.cdns : {}
+    var cdnKeys = Object.keys(cdns)
+    for (var i = 0; i < cdnKeys.length; i++) {
+      var cdn = cdns[cdnKeys[i]]
+      if (cdn && cdn.drm === true) return true
+    }
+    return false
+  }
+
   function resolveVimeoStreamDetails(payload, baseUrl) {
     var parsed = null
     try {
@@ -242,7 +265,36 @@
     }
 
     var metadata = extractVimeoMetadata(payload, baseUrl)
-    var options = extractVimeoDownloadOptions(payload, baseUrl)
+
+    // Check for DRM before anything else
+    var files = parsed && parsed.request && parsed.request.files ? parsed.request.files : null
+    var isDrmProtected = Boolean(
+      files && (hasDrmFlag(files, 'hls') || hasDrmFlag(files, 'dash')) &&
+      !files.progressive
+    )
+
+    if (isDrmProtected) {
+      return {
+        blockReason: 'Conteudo protegido por DRM. A extensao nao pode baixar esse stream.',
+        canDownloadDash: false,
+        canDownloadDirect: false,
+        canDownloadHls: false,
+        canDownloadVimeoPlaylist: false,
+        isDrmProtected: true,
+        options: [],
+        selectedType: 'drm',
+        selectedUrl: null,
+        thumbnailUrl: metadata.thumbnailUrl,
+        title: metadata.title,
+      }
+    }
+
+    // Progressive options — filter out adaptive range fragments
+    var allOptions = extractVimeoDownloadOptions(payload, baseUrl)
+    var options = allOptions.filter(function(opt) {
+      return !isPartialFragmentUrl(opt.url)
+    })
+
     var selected = options[0] || null
     var selectedUrl = selected ? selected.url : null
     var selectedType = selected ? selected.type : null
@@ -260,6 +312,15 @@
       if (dashUrl) {
         selectedUrl = dashUrl
         selectedType = 'dash'
+      }
+    }
+
+    // Check embed.adaptive_url for Vimeo segmented playlist
+    if (!selectedUrl && parsed && parsed.embed && typeof parsed.embed.adaptive_url === 'string') {
+      var adaptiveUrl = toAbsoluteUrl(parsed.embed.adaptive_url, baseUrl)
+      if (adaptiveUrl) {
+        selectedUrl = adaptiveUrl
+        selectedType = 'vimeo'
       }
     }
 
@@ -285,8 +346,18 @@
       }
     }
 
+    var canDownloadDirect = selectedType === 'progressive' && options.length > 0
+    var canDownloadHls = selectedType === 'hls'
+    var canDownloadDash = selectedType === 'dash'
+    var canDownloadVimeoPlaylist = selectedType === 'vimeo'
+
     return {
-      options: options,
+      canDownloadDash: canDownloadDash,
+      canDownloadDirect: canDownloadDirect,
+      canDownloadHls: canDownloadHls,
+      canDownloadVimeoPlaylist: canDownloadVimeoPlaylist,
+      isDrmProtected: false,
+      options: canDownloadDirect ? options : [],
       selectedType: selectedType,
       selectedUrl: selectedUrl,
       thumbnailUrl: metadata.thumbnailUrl,
