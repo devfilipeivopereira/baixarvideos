@@ -124,11 +124,25 @@
     )
   }
 
+  function isVimeoConfigUrl(url) {
+    return /player\.vimeo\.com\/video\/\d+\/config(?:[?#]|$)/i.test(String(url || ''))
+  }
+
   function inspectTextResponse(url, contentType, body, source) {
     if (!shouldInspectResponseBody(url, contentType, body ? body.length : 0)) return
     if (!body || body.length > 500000) return
 
     postDebug('body-inspected', { detail: contentType || '', url: url })
+
+    // Cache Vimeo config bodies so background can resolve without re-fetching
+    if (isVimeoConfigUrl(url)) {
+      window.postMessage({
+        __baixarhsl_vimeo_config__: true,
+        body: body,
+        source: 'interceptor',
+        url: url,
+      }, '*')
+    }
 
     var detector = getDetector()
     if (!detector || typeof detector.extractStreamMatchesFromText !== 'function') {

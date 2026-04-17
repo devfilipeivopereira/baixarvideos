@@ -330,6 +330,17 @@ window.addEventListener('message', function(event) {
     return
   }
 
+  if (event.data && event.data.__baixarhsl_vimeo_config__) {
+    if (event.data.url && event.data.body) {
+      sendRuntimeMessage({
+        action: 'cache-vimeo-config',
+        body: event.data.body,
+        url: event.data.url,
+      })
+    }
+    return
+  }
+
   if (!event.data || !event.data.__baixarhsl__) return
 
   if (!self.BaixarHSLDetector || typeof self.BaixarHSLDetector.detectStreamFromRequest !== 'function') return

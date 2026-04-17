@@ -9,6 +9,7 @@ var STREAMS_KEY = 'streams'
 var DIAG_KEY = 'diagnosticsByTab'
 var MAX_STREAMS = 50
 var resolvedCache = new Map()
+var vimeoConfigCache = new Map() // url → body text (intercepted from page)
 
 // ── Detecção de URL de mídia (resiliente, sem depender do detector) ──────────
 function detectMediaType(url) {
@@ -195,6 +196,19 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     return false
   }
 
+  // Cache de body do config Vimeo interceptado na página
+  if (message.action === 'cache-vimeo-config') {
+    if (message.url && message.body) {
+      var cacheKey = dedupeKeyForUrl(message.url, 'vimeo')
+      vimeoConfigCache.set(cacheKey, message.body)
+      // Invalidar cache de resolução para forçar re-resolução com o body cacheado
+      var resolveKey = 'vimeo::' + message.url
+      resolvedCache.delete(resolveKey)
+    }
+    sendResponse({ ok: true })
+    return false
+  }
+
   // Resolver detalhes de manifesto HLS/Vimeo
   if (message.action === 'resolveStreamDetails') {
     resolveStreamDetails(message.stream || {})
@@ -341,42 +355,61 @@ async function resolveStreamDetails(stream) {
     }
 
     if (stream.type === 'vimeo') {
-      var vimeoResp = await fetch(stream.url, { credentials: 'include', cache: 'no-store' })
-      if (!vimeoResp.ok) throw new Error('HTTP ' + vimeoResp.status)
-      var vimeoText = await vimeoResp.text()
       var vimeoUrlLower = stream.url.toLowerCase()
 
       // playlist.json / master.json → segmented Vimeo playlist parser
-      if (
-        (vimeoUrlLower.includes('playlist.json') || vimeoUrlLower.includes('master.json')) &&
-        self.BaixarHSLVimeoPlaylist
-      ) {
-        var playlistDetails = self.BaixarHSLVimeoPlaylist.resolvePlaylistDetails(vimeoText, stream.url)
-        if (playlistDetails && Array.isArray(playlistDetails.options) && playlistDetails.options.length > 0) {
-          return {
-            canDownloadVimeoPlaylist: true,
-            canDownloadDirect: false,
-            canDownloadHls: false,
-            canDownloadDash: false,
-            isDrmProtected: false,
-            options: playlistDetails.options,
-            selectedType: 'vimeo-playlist',
-            selectedUrl: playlistDetails.selectedUrl,
-            title: stream.title || '',
-            thumbnailUrl: stream.thumbnailUrl || '',
-            filename: (stream.title || 'video') + '.mp4',
+      // Don't try to use config parser as fallback for playlist.json
+      if (vimeoUrlLower.includes('playlist.json') || vimeoUrlLower.includes('master.json')) {
+        if (self.BaixarHSLVimeoPlaylist) {
+          var playlistResp = await fetch(stream.url, { credentials: 'include', cache: 'no-store' })
+          if (!playlistResp.ok) throw new Error('HTTP ' + playlistResp.status)
+          var playlistText = await playlistResp.text()
+          var playlistDetails = self.BaixarHSLVimeoPlaylist.resolvePlaylistDetails(playlistText, stream.url)
+          if (playlistDetails && Array.isArray(playlistDetails.options) && playlistDetails.options.length > 0) {
+            return {
+              canDownloadVimeoPlaylist: true,
+              canDownloadDirect: false,
+              canDownloadHls: false,
+              canDownloadDash: false,
+              isDrmProtected: false,
+              options: playlistDetails.options,
+              selectedType: 'vimeo-playlist',
+              selectedUrl: playlistDetails.selectedUrl,
+              title: stream.title || '',
+              thumbnailUrl: stream.thumbnailUrl || '',
+              filename: (stream.title || 'video') + '.mp4',
+            }
           }
+        }
+        // playlist.json with no downloadable tracks (e.g. all /range/prot/ segments) — skip
+        return null
+      }
+
+      // /config → use interceptor-cached body if available (avoids Referer/domain issues)
+      var configCacheKey = dedupeKeyForUrl(stream.url, 'vimeo')
+      var vimeoText = vimeoConfigCache.get(configCacheKey) || null
+      if (!vimeoText) {
+        try {
+          var vimeoResp = await fetch(stream.url, { credentials: 'include', cache: 'no-store' })
+          if (vimeoResp.ok) {
+            vimeoText = await vimeoResp.text()
+          }
+        } catch (fetchErr) {
+          void fetchErr
         }
       }
 
       // /config → Vimeo player config parser
-      if (self.BaixarHSLStreamDetails) {
+      if (vimeoText && self.BaixarHSLStreamDetails) {
         var details = self.BaixarHSLStreamDetails.resolveVimeoStreamDetails(vimeoText, stream.url)
         details.title = details.title || stream.title || ''
         details.thumbnailUrl = details.thumbnailUrl || stream.thumbnailUrl || ''
         details.filename = (details.title || 'video') + '.mp4'
         return details
       }
+
+      // Config not available — cannot resolve this Vimeo stream
+      return null
     }
 
     // DRM / MediaSource — não tem download direto
