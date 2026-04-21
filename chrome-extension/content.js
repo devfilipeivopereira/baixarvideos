@@ -193,7 +193,7 @@ function scanPageForEmbeddedStreams(reason) {
   for (var scriptIndex = 0; scriptIndex < scriptNodes.length; scriptIndex += 1) {
     var scriptText = scriptNodes[scriptIndex].textContent || ''
     if (!scriptText) continue
-    if (!/vimeo|configUrl|config_url|progressive|player\.vimeo\.com/i.test(scriptText)) continue
+    if (!/vimeo|youtube|ytinitialplayerresponse|googlevideo|videoplayback|configUrl|config_url|progressive|player\.vimeo\.com/i.test(scriptText)) continue
 
     collectMatchesFromText(scriptText, 'dom-script')
   }
@@ -334,6 +334,17 @@ window.addEventListener('message', function(event) {
     if (event.data.url && event.data.body) {
       sendRuntimeMessage({
         action: 'cache-vimeo-config',
+        body: event.data.body,
+        url: event.data.url,
+      })
+    }
+    return
+  }
+
+  if (event.data && event.data.__baixarhsl_vimeo_playlist__) {
+    if (event.data.url && event.data.body) {
+      sendRuntimeMessage({
+        action: 'cache-vimeo-playlist',
         body: event.data.body,
         url: event.data.url,
       })

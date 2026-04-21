@@ -14,8 +14,9 @@ var currentResolveToken = 0
 var currentResolveRetryTimer = null
 var currentActionMessage = ''
 var currentActionBusy = false
+var currentBackgroundJobs = []
+var backgroundJobsPollTimer = null
 var downloadsApiAvailable = Boolean(chrome.downloads && chrome.downloads.download)
-var hlsDownloadApi = globalThis.BaixarHSLHlsDownload
 var popupCurationApi = globalThis.BaixarHSLPopupCuration
 var streamSelectionApi = globalThis.BaixarHSLStreamSelection
 
@@ -123,6 +124,42 @@ function getResolvedItems() {
   return Array.isArray(currentResolvedItems) ? currentResolvedItems : []
 }
 
+function getBackgroundJobs() {
+  return Array.isArray(currentBackgroundJobs) ? currentBackgroundJobs : []
+}
+
+function isBackgroundJobActive(job) {
+  if (!job) return false
+  return job.status === 'queued' || job.status === 'running' || job.status === 'cancelling'
+}
+
+function getCurrentSelectionActiveJob() {
+  var jobs = getBackgroundJobs()
+  if (!jobs.length) return null
+
+  var dedupeKey = String(currentResolvedKey || '')
+  var selectedUrl = String(getEffectiveDownloadUrl() || '')
+
+  for (var index = 0; index < jobs.length; index += 1) {
+    var job = jobs[index]
+    if (!isBackgroundJobActive(job)) continue
+    if (dedupeKey && String(job.dedupeKey || '') === dedupeKey) return job
+    if (selectedUrl && String(job.selectedUrl || '') === selectedUrl) return job
+  }
+
+  return null
+}
+
+function canCancelBackgroundJob(job) {
+  if (!job) return false
+  return job.status === 'queued' || job.status === 'running' || job.status === 'cancelling'
+}
+
+function canResumeBackgroundJob(job) {
+  if (!job) return false
+  return job.status === 'failed' || job.status === 'cancelled'
+}
+
 function getListEmptyStateText() {
   if (currentListBusy) {
     return 'Analisando videos baixaveis nesta aba...'
@@ -207,6 +244,66 @@ function resolveStreamDetailsAsync(stream) {
   })
 }
 
+function buildFallbackDetailsFromStream(stream) {
+  if (!stream || !stream.url) return null
+
+  var streamUrl = String(stream.url || '')
+  var streamType = String(stream.type || '')
+  var baseDetails = {
+    filename: (stream.title || 'video') + '.mp4',
+    isDrmProtected: false,
+    thumbnailUrl: stream.thumbnailUrl || '',
+    title: stream.title || '',
+  }
+
+  if (streamType === 'progressive' && !isPartialMediaFragmentUrl(streamUrl)) {
+    return Object.assign({}, baseDetails, {
+      canDownloadDirect: true,
+      options: [{ label: 'Download direto', quality: 'Original', type: 'progressive', url: streamUrl }],
+      selectedType: 'progressive',
+      selectedUrl: streamUrl,
+    })
+  }
+
+  if (streamType === 'hls') {
+    return Object.assign({}, baseDetails, {
+      canDownloadHls: true,
+      options: [{ label: 'Original (HLS)', quality: 'Original', type: 'hls', url: streamUrl }],
+      selectedType: 'hls',
+      selectedUrl: streamUrl,
+    })
+  }
+
+  if (streamType === 'dash') {
+    return Object.assign({}, baseDetails, {
+      canDownloadDash: true,
+      options: [{ label: 'Original (DASH)', quality: 'Original', type: 'dash', url: streamUrl }],
+      selectedType: 'dash',
+      selectedUrl: streamUrl,
+    })
+  }
+
+  if (
+    streamType === 'vimeo' &&
+    /(?:playlist|master)\.json(?:[?#]|$)/i.test(streamUrl)
+  ) {
+    return Object.assign({}, baseDetails, {
+      canDownloadVimeoPlaylist: true,
+      options: [{
+        label: 'Original (Vimeo)',
+        playlistUrl: streamUrl,
+        quality: 'Original',
+        type: 'vimeo-playlist',
+        url: streamUrl,
+      }],
+      selectedType: 'vimeo-playlist',
+      selectedUrl: streamUrl,
+    })
+  }
+
+  return null
+}
+
 async function refreshResolvedItems(retryCount) {
   var attempt = Number(retryCount || 0)
   if (attempt === 0 && currentResolveRetryTimer) {
@@ -231,7 +328,7 @@ async function refreshResolvedItems(retryCount) {
   var resolvedCandidates = await Promise.all(scopedStreams.map(async function(stream) {
     var details = await resolveStreamDetailsAsync(stream)
     return {
-      details: details,
+      details: details || buildFallbackDetailsFromStream(stream),
       stream: stream,
     }
   }))
@@ -410,6 +507,7 @@ function buildStatusText() {
 }
 
 function renderPreview() {
+  var mediaFrame = document.getElementById('previewMediaFrame')
   var image = document.getElementById('previewImage')
   var fallback = document.getElementById('previewFallback')
   var title = document.getElementById('previewTitle')
@@ -421,13 +519,15 @@ function renderPreview() {
 
   var thumbnail = getEffectiveThumbnail()
   if (thumbnail) {
+    if (mediaFrame) mediaFrame.style.display = 'block'
     image.src = thumbnail
     image.style.display = 'block'
     fallback.style.display = 'none'
   } else {
+    if (mediaFrame) mediaFrame.style.display = 'none'
     image.removeAttribute('src')
     image.style.display = 'none'
-    fallback.style.display = 'flex'
+    fallback.style.display = 'none'
   }
 
   title.textContent = currentStream
@@ -522,15 +622,19 @@ function renderPreview() {
     getEffectiveDownloadUrl()
   )
   var canDownload = canDownloadDirect || canDownloadHls || canDownloadVimeoPlaylist || canDownloadDash
+  var activeSelectionJob = getCurrentSelectionActiveJob()
+  var jobRunningForSelection = Boolean(activeSelectionJob)
 
-  primaryButton.disabled = !canDownload || currentActionBusy
+  primaryButton.disabled = !canDownload || currentActionBusy || jobRunningForSelection
   primaryButton.textContent = currentActionBusy
     ? 'Processando...'
-    : canDownload
+    : jobRunningForSelection
+      ? 'Ja em andamento'
+      : canDownload
       ? 'Baixar no PC'
       : 'Download indisponivel'
-  primaryButton.style.opacity = canDownload && !currentActionBusy ? '1' : '.55'
-  primaryButton.style.cursor = canDownload && !currentActionBusy ? 'pointer' : 'not-allowed'
+  primaryButton.style.opacity = canDownload && !currentActionBusy && !jobRunningForSelection ? '1' : '.55'
+  primaryButton.style.cursor = canDownload && !currentActionBusy && !jobRunningForSelection ? 'pointer' : 'not-allowed'
 
   copyButton.disabled = !currentStream || currentActionBusy
   copyButton.style.opacity = currentStream && !currentActionBusy ? '1' : '.55'
@@ -560,6 +664,75 @@ function renderStreams() {
   }).join('')
 
   renderPreview()
+}
+
+function getBackgroundJobStatusLabel(job) {
+  if (!job) return 'desconhecido'
+  if (job.status === 'queued') return 'na fila'
+  if (job.status === 'running') return 'baixando'
+  if (job.status === 'cancelling') return 'cancelando'
+  if (job.status === 'cancelled') return 'cancelado'
+  if (job.status === 'completed') return 'concluido'
+  if (job.status === 'failed') return 'falhou'
+  return String(job.status || 'desconhecido')
+}
+
+function getBackgroundJobStatusStyle(job) {
+  if (!job) return { bg: '#f3f4f6', color: '#374151' }
+  if (job.status === 'queued') return { bg: '#fef3c7', color: '#92400e' }
+  if (job.status === 'running') return { bg: '#dbeafe', color: '#1e40af' }
+  if (job.status === 'cancelling') return { bg: '#fde68a', color: '#92400e' }
+  if (job.status === 'cancelled') return { bg: '#f3f4f6', color: '#374151' }
+  if (job.status === 'completed') return { bg: '#dcfce7', color: '#166534' }
+  if (job.status === 'failed') return { bg: '#fee2e2', color: '#991b1b' }
+  return { bg: '#f3f4f6', color: '#374151' }
+}
+
+function renderBackgroundJobs() {
+  var list = document.getElementById('backgroundJobsList')
+  if (!list) return
+
+  var jobs = getBackgroundJobs().slice(0, 8)
+  if (jobs.length === 0) {
+    list.innerHTML = '<div style="padding:10px;border:1px dashed #d1d5db;border-radius:12px;background:#fff;color:#6b7280;font-size:11px;text-align:center">Sem downloads em segundo plano.</div>'
+    return
+  }
+
+  list.innerHTML = jobs.map(function(job) {
+    var style = getBackgroundJobStatusStyle(job)
+    var percent = typeof job.percent === 'number' ? Math.max(0, Math.min(100, Math.round(job.percent))) : null
+    var jobId = String(job.jobId || '')
+    var title = String(job.title || job.filename || 'Video')
+    var detail = String(job.message || '')
+    var updated = typeof job.updatedAt === 'number' ? timeAgo(job.updatedAt) : ''
+    var showBar = isBackgroundJobActive(job) || (percent !== null && percent > 0 && percent < 100)
+    var errorLine = job.status === 'failed' && job.error
+      ? '<div style="margin-top:6px;font-size:10px;color:#991b1b;line-height:1.35">' + escapeHtml(String(job.error || 'Falha no download em segundo plano.')) + '</div>'
+      : ''
+    var actionsHtml = ''
+
+    if (canCancelBackgroundJob(job)) {
+      actionsHtml = '<button type="button" data-action="cancel-job" data-job-id="' + escapeHtml(jobId) + '" style="padding:6px 9px;border:none;border-radius:10px;background:#fee2e2;color:#b91c1c;font-size:10px;font-weight:700;cursor:pointer">Cancelar</button>'
+    } else if (canResumeBackgroundJob(job)) {
+      actionsHtml = '<button type="button" data-action="resume-job" data-job-id="' + escapeHtml(jobId) + '" style="padding:6px 9px;border:none;border-radius:10px;background:#dcfce7;color:#166534;font-size:10px;font-weight:700;cursor:pointer">Retomar</button>'
+    }
+
+    return '<div style="padding:10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">' +
+        '<div style="font-size:11px;font-weight:700;color:#111827;line-height:1.35">' + escapeHtml(title) + '</div>' +
+        '<span style="display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:' + style.bg + ';color:' + style.color + ';font-size:10px;font-weight:700;white-space:nowrap">' + escapeHtml(getBackgroundJobStatusLabel(job)) + '</span>' +
+      '</div>' +
+      '<div style="margin-top:5px;font-size:10px;color:#4b5563;line-height:1.35">' + escapeHtml(detail || 'Processando...') + '</div>' +
+      (showBar
+        ? '<div style="margin-top:7px;height:6px;border-radius:999px;background:#e5e7eb;overflow:hidden"><div style="width:' + String(percent === null ? 12 : percent) + '%;height:100%;background:#16a34a"></div></div>'
+        : '') +
+      (actionsHtml
+        ? '<div style="margin-top:8px;display:flex;justify-content:flex-end">' + actionsHtml + '</div>'
+        : '') +
+      '<div style="margin-top:6px;font-size:10px;color:#9ca3af">' + escapeHtml(updated || 'agora') + '</div>' +
+      errorLine +
+    '</div>'
+  }).join('')
 }
 
 function renderDebug() {
@@ -660,11 +833,40 @@ function loadDiagnostics(callback) {
   })
 }
 
+function loadBackgroundJobs(callback) {
+  sendRuntimeMessage({
+    action: 'getBackgroundDownloadJob',
+  }, function(error, response) {
+    if (error || !response || !response.ok || !Array.isArray(response.jobs)) {
+      currentBackgroundJobs = []
+      renderBackgroundJobs()
+      if (callback) callback()
+      return
+    }
+
+    currentBackgroundJobs = response.jobs
+    renderBackgroundJobs()
+    if (callback) callback()
+  })
+}
+
+function startBackgroundJobsPolling() {
+  if (backgroundJobsPollTimer) {
+    clearInterval(backgroundJobsPollTimer)
+  }
+
+  backgroundJobsPollTimer = setInterval(function() {
+    loadBackgroundJobs()
+  }, 1200)
+}
+
 function loadAll() {
   getActiveTab(function(tab) {
     currentTab = tab
     loadStreams(function() {
-      loadDiagnostics()
+      loadDiagnostics(function() {
+        loadBackgroundJobs()
+      })
     })
   })
 }
@@ -743,6 +945,98 @@ function getPrimaryDownloadMode() {
   return ''
 }
 
+function startBackgroundConversion(payload, onComplete) {
+  sendRuntimeMessage(
+    Object.assign({ action: 'startBackgroundConversionDownload' }, payload),
+    function(error, response) {
+      if (error || !response || !response.ok) {
+        var runtimeErrorMessage = error && error.message
+          ? String(error.message)
+          : ''
+        var responseErrorMessage = response && response.error
+          ? String(response.error)
+          : ''
+        onComplete({
+          error: responseErrorMessage || runtimeErrorMessage || 'Falha ao iniciar processamento em segundo plano.',
+          ok: false,
+        })
+        return
+      }
+
+      onComplete({
+        alreadyCompleted: Boolean(response.alreadyCompleted),
+        alreadyRunning: Boolean(response.alreadyRunning),
+        jobId: response.jobId ? String(response.jobId) : '',
+        message: response.message ? String(response.message) : '',
+        ok: true,
+      })
+    }
+  )
+}
+
+function cancelBackgroundConversionJob(jobId, onComplete) {
+  sendRuntimeMessage(
+    {
+      action: 'cancelBackgroundDownloadJob',
+      jobId: String(jobId || ''),
+    },
+    function(error, response) {
+      if (error || !response || !response.ok) {
+        onComplete({
+          error: response && response.error
+            ? String(response.error)
+            : error && error.message
+              ? String(error.message)
+              : 'Falha ao cancelar o download em segundo plano.',
+          ok: false,
+        })
+        return
+      }
+
+      onComplete({
+        alreadyCancelled: Boolean(response.alreadyCancelled),
+        alreadyCompleted: Boolean(response.alreadyCompleted),
+        alreadyFailed: Boolean(response.alreadyFailed),
+        alreadyStopped: Boolean(response.alreadyStopped),
+        jobId: response.jobId ? String(response.jobId) : String(jobId || ''),
+        message: response.message ? String(response.message) : 'Cancelamento solicitado.',
+        ok: true,
+      })
+    }
+  )
+}
+
+function resumeBackgroundConversionJob(jobId, onComplete) {
+  sendRuntimeMessage(
+    {
+      action: 'resumeBackgroundDownloadJob',
+      jobId: String(jobId || ''),
+    },
+    function(error, response) {
+      if (error || !response || !response.ok) {
+        onComplete({
+          error: response && response.error
+            ? String(response.error)
+            : error && error.message
+              ? String(error.message)
+              : 'Falha ao retomar o download em segundo plano.',
+          ok: false,
+        })
+        return
+      }
+
+      onComplete({
+        alreadyCompleted: Boolean(response.alreadyCompleted),
+        alreadyRunning: Boolean(response.alreadyRunning),
+        jobId: response.jobId ? String(response.jobId) : String(jobId || ''),
+        message: response.message ? String(response.message) : 'Download retomado em segundo plano.',
+        ok: true,
+        resumed: Boolean(response.resumed),
+      })
+    }
+  )
+}
+
 function downloadSelectedStream(button) {
   var option = getSelectedOption()
   var downloadUrl = option && option.url ? option.url : getEffectiveDownloadUrl()
@@ -791,7 +1085,7 @@ function downloadSelectedStream(button) {
   })
 }
 
-async function downloadSelectedHlsStream() {
+function downloadSelectedHlsStream() {
   var option = getSelectedOption()
   var manifestUrl = option && option.url ? option.url : getEffectiveDownloadUrl()
 
@@ -800,52 +1094,48 @@ async function downloadSelectedHlsStream() {
     return
   }
 
-  if (!hlsDownloadApi) {
-    setActionState('O motor HLS da extensao nao foi carregado corretamente.', true)
-    setTimeout(function() {
-      clearActionState()
-    }, 2200)
-    return
-  }
+  var filename = buildDownloadFilename(currentResolvedDetails.title, option, manifestUrl)
+  var saveTarget = { key: '', prompted: false }
 
-  try {
-    setActionState('Preparando stream HLS...', true)
-    setActionState('Baixando segmentos do stream HLS...', true)
+  setActionState('Baixando segmentos do stream HLS em segundo plano...', true)
+  console.log('[BaixarHSL] iniciando download HLS em segundo plano:', manifestUrl)
+  startBackgroundConversion({
+    dedupeKey: currentResolvedKey || manifestUrl,
+    filename: filename,
+    manifestUrl: manifestUrl,
+    mode: 'hls',
+    saveFileHandleKey: saveTarget && saveTarget.key ? saveTarget.key : '',
+    selectedUrl: manifestUrl,
+    tabId: currentTab && typeof currentTab.id === 'number' ? currentTab.id : -1,
+    title: currentResolvedDetails.title || 'Video detectado',
+  }, function(result) {
+    if (!result || !result.ok) {
+      setActionState(
+        result && result.error
+          ? result.error
+          : 'Falha ao iniciar o download HLS em segundo plano.',
+        true
+      )
+      setTimeout(function() {
+        clearActionState()
+      }, 2600)
+      return
+    }
 
-    var blob = await hlsDownloadApi.downloadHlsAsMp4({
-      manifestUrl: manifestUrl,
-      onStatus: function(percent, message) {
-        var safePercent = typeof percent === 'number' ? Math.max(0, Math.min(100, percent)) : null
-        if (safePercent === null) {
-          setActionState(message, true)
-          return
-        }
-
-        setActionState(message + ' ' + safePercent + '%', true)
-      },
-    })
-
-    setActionState('Salvando video no PC...', true)
-    await hlsDownloadApi.saveBlobToDisk(
-      blob,
-      buildDownloadFilename(currentResolvedDetails.title, option, manifestUrl)
-    )
-    setActionState('Download iniciado no computador.', true)
-  } catch (error) {
     setActionState(
-      error && error.message
-        ? error.message
-        : 'Falha ao converter o stream HLS para MP4.',
+      result.message || (result.alreadyRunning
+        ? 'Este video ja esta em andamento em segundo plano.'
+        : 'Download HLS em segundo plano iniciado. Pode fechar o popup.'),
       true
     )
-  } finally {
+    loadBackgroundJobs()
     setTimeout(function() {
       clearActionState()
-    }, 2200)
-  }
+    }, 2600)
+  })
 }
 
-async function downloadSelectedVimeoPlaylistStream() {
+function downloadSelectedVimeoPlaylistStream() {
   var option = getSelectedOption()
   var manifestUrl = option && option.playlistUrl ? option.playlistUrl : getEffectiveDownloadUrl()
 
@@ -854,52 +1144,48 @@ async function downloadSelectedVimeoPlaylistStream() {
     return
   }
 
-  if (!hlsDownloadApi || typeof hlsDownloadApi.downloadVimeoPlaylistAsMp4 !== 'function') {
-    setActionState('O motor Vimeo da extensao nao foi carregado corretamente.', true)
-    setTimeout(function() {
-      clearActionState()
-    }, 2200)
-    return
-  }
+  var filename = buildDownloadFilename(currentResolvedDetails.title, option, manifestUrl)
+  var saveTarget = { key: '', prompted: false }
 
-  try {
-    setActionState('Preparando playlist segmentada do Vimeo...', true)
+  setActionState('Preparando playlist segmentada do Vimeo em segundo plano...', true)
+  console.log('[BaixarHSL] iniciando download Vimeo em segundo plano:', manifestUrl)
+  startBackgroundConversion({
+    dedupeKey: currentResolvedKey || manifestUrl,
+    filename: filename,
+    mode: 'vimeo-playlist',
+    playlistUrl: manifestUrl,
+    saveFileHandleKey: saveTarget && saveTarget.key ? saveTarget.key : '',
+    selectedUrl: option && option.url ? option.url : '',
+    tabId: currentTab && typeof currentTab.id === 'number' ? currentTab.id : -1,
+    title: currentResolvedDetails.title || 'Video detectado',
+  }, function(result) {
+    if (!result || !result.ok) {
+      setActionState(
+        result && result.error
+          ? result.error
+          : 'Falha ao iniciar o download Vimeo em segundo plano.',
+        true
+      )
+      setTimeout(function() {
+        clearActionState()
+      }, 2600)
+      return
+    }
 
-    var blob = await hlsDownloadApi.downloadVimeoPlaylistAsMp4({
-      option: option,
-      playlistUrl: manifestUrl,
-      onStatus: function(percent, message) {
-        var safePercent = typeof percent === 'number' ? Math.max(0, Math.min(100, percent)) : null
-        if (safePercent === null) {
-          setActionState(message, true)
-          return
-        }
-
-        setActionState(message + ' ' + safePercent + '%', true)
-      },
-    })
-
-    setActionState('Salvando video no PC...', true)
-    await hlsDownloadApi.saveBlobToDisk(
-      blob,
-      buildDownloadFilename(currentResolvedDetails.title, option, manifestUrl)
-    )
-    setActionState('Download iniciado no computador.', true)
-  } catch (error) {
     setActionState(
-      error && error.message
-        ? error.message
-        : 'Falha ao montar o Vimeo segmentado em MP4.',
+      result.message || (result.alreadyRunning
+        ? 'Este video ja esta em andamento em segundo plano.'
+        : 'Download Vimeo em segundo plano iniciado. Pode fechar o popup.'),
       true
     )
-  } finally {
+    loadBackgroundJobs()
     setTimeout(function() {
       clearActionState()
-    }, 2200)
-  }
+    }, 2600)
+  })
 }
 
-async function downloadSelectedDashStream() {
+function downloadSelectedDashStream() {
   var option = getSelectedOption()
   var mpdUrl = option && option.url ? option.url : getEffectiveDownloadUrl()
 
@@ -908,37 +1194,39 @@ async function downloadSelectedDashStream() {
     return
   }
 
-  if (!hlsDownloadApi || typeof hlsDownloadApi.downloadDashAsMp4 !== 'function') {
-    setActionState('O motor DASH da extensao nao foi carregado corretamente.', true)
-    setTimeout(function() { clearActionState() }, 2200)
-    return
-  }
+  var filename = buildDownloadFilename(currentResolvedDetails.title, option, mpdUrl)
+  var saveTarget = { key: '', prompted: false }
 
-  try {
-    setActionState('Preparando stream DASH...', true)
+  setActionState('Preparando stream DASH em segundo plano...', true)
+  console.log('[BaixarHSL] iniciando download DASH em segundo plano:', mpdUrl)
+  startBackgroundConversion({
+    dedupeKey: currentResolvedKey || mpdUrl,
+    filename: filename,
+    mode: 'dash',
+    mpdUrl: mpdUrl,
+    saveFileHandleKey: saveTarget && saveTarget.key ? saveTarget.key : '',
+    selectedUrl: mpdUrl,
+    tabId: currentTab && typeof currentTab.id === 'number' ? currentTab.id : -1,
+    title: currentResolvedDetails.title || 'Video detectado',
+  }, function(result) {
+    if (!result || !result.ok) {
+      setActionState(
+        result && result.error ? result.error : 'Falha ao iniciar o download DASH em segundo plano.',
+        true
+      )
+      setTimeout(function() { clearActionState() }, 2600)
+      return
+    }
 
-    var blob = await hlsDownloadApi.downloadDashAsMp4({
-      mpdUrl: mpdUrl,
-      onStatus: function(percent, message) {
-        var safePercent = typeof percent === 'number' ? Math.max(0, Math.min(100, percent)) : null
-        setActionState(message + (safePercent !== null ? ' ' + safePercent + '%' : ''), true)
-      },
-    })
-
-    setActionState('Salvando video no PC...', true)
-    await hlsDownloadApi.saveBlobToDisk(
-      blob,
-      buildDownloadFilename(currentResolvedDetails.title, option, mpdUrl)
-    )
-    setActionState('Download iniciado no computador.', true)
-  } catch (error) {
     setActionState(
-      error && error.message ? error.message : 'Falha ao converter o stream DASH para MP4.',
+      result.message || (result.alreadyRunning
+        ? 'Este video ja esta em andamento em segundo plano.'
+        : 'Download DASH em segundo plano iniciado. Pode fechar o popup.'),
       true
     )
-  } finally {
-    setTimeout(function() { clearActionState() }, 2200)
-  }
+    loadBackgroundJobs()
+    setTimeout(function() { clearActionState() }, 2600)
+  })
 }
 
 function handlePrimaryAction(button) {
@@ -960,6 +1248,62 @@ function handlePrimaryAction(button) {
   }
 
   downloadSelectedStream(button)
+}
+
+function handleBackgroundJobAction(button) {
+  if (!button) return
+
+  var action = String(button.getAttribute('data-action') || '')
+  var jobId = String(button.getAttribute('data-job-id') || '')
+  if (!jobId) return
+
+  button.disabled = true
+  button.style.opacity = '.65'
+
+  if (action === 'cancel-job') {
+    setActionState('Solicitando cancelamento em segundo plano...', true)
+    cancelBackgroundConversionJob(jobId, function(result) {
+      setActionState(
+        result && result.ok
+          ? (result.message || 'Cancelamento solicitado.')
+          : result && result.error
+            ? result.error
+            : 'Falha ao cancelar o download em segundo plano.',
+        true
+      )
+      loadBackgroundJobs(function() {
+        renderPreview()
+        setTimeout(function() {
+          clearActionState()
+        }, 2200)
+      })
+    })
+    return
+  }
+
+  if (action === 'resume-job') {
+    setActionState('Retomando download em segundo plano...', true)
+    resumeBackgroundConversionJob(jobId, function(result) {
+      setActionState(
+        result && result.ok
+          ? (result.message || 'Download retomado em segundo plano.')
+          : result && result.error
+            ? result.error
+            : 'Falha ao retomar o download em segundo plano.',
+        true
+      )
+      loadBackgroundJobs(function() {
+        renderPreview()
+        setTimeout(function() {
+          clearActionState()
+        }, 2200)
+      })
+    })
+    return
+  }
+
+  button.disabled = false
+  button.style.opacity = '1'
 }
 
 document.getElementById('btnRefresh').addEventListener('click', loadAll)
@@ -1001,5 +1345,26 @@ document.getElementById('list').addEventListener('click', function(event) {
   clearActionState()
   renderStreams()
 })
+document.getElementById('backgroundJobsList').addEventListener('click', function(event) {
+  var target = event.target
+  var button = target && typeof target.closest === 'function'
+    ? target.closest('button[data-action]')
+    : null
 
+  if (!button) return
+
+  var action = button.getAttribute('data-action')
+  if (action !== 'cancel-job' && action !== 'resume-job') return
+
+  handleBackgroundJobAction(button)
+})
+
+window.addEventListener('beforeunload', function() {
+  if (!backgroundJobsPollTimer) return
+  clearInterval(backgroundJobsPollTimer)
+  backgroundJobsPollTimer = null
+})
+
+startBackgroundJobsPolling()
 loadAll()
+

@@ -3,7 +3,7 @@
   "name": "BaixarHSL - Capturador de Stream",
   "version": "1.3",
   "description": "Captura streams de video e baixa MP4 direto, incluindo HLS nao protegido por DRM.",
-  "permissions": ["storage", "webRequest", "tabs", "downloads", "declarativeNetRequest", "scripting"],
+  "permissions": ["storage", "webRequest", "tabs", "downloads", "declarativeNetRequest", "scripting", "offscreen"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

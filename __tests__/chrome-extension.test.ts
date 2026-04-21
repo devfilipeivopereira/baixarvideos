@@ -55,14 +55,17 @@ describe('chrome extension capture wiring', () => {
       permissions?: string[]
     }
 
-    expect(manifest.permissions).toEqual(expect.arrayContaining(['downloads']))
+    expect(manifest.permissions).toEqual(expect.arrayContaining(['downloads', 'offscreen']))
     expect(popupHtml).toContain('id="previewImage"')
     expect(popupHtml).toContain('id="previewTitle"')
     expect(popupHtml).toContain('id="qualitySelect"')
     expect(popupHtml).toContain('id="btnPrimaryAction"')
     expect(popupHtml).toContain('id="btnCopyUrl"')
+    expect(popupHtml).toContain('id="backgroundJobsList"')
     expect(popupScript).toContain("action: 'resolveStreamDetails'")
     expect(popupScript).toContain("action: 'downloadResolvedStream'")
+    expect(popupScript).toContain("action: 'startBackgroundConversionDownload'")
+    expect(popupScript).toContain("action: 'getBackgroundDownloadJob'")
     expect(popupScript).toContain('chrome.downloads')
     expect(popupScript).toContain('Baixando segmentos')
     expect(popupScript).toContain("type === 'hls'")
@@ -102,6 +105,7 @@ describe('chrome extension capture wiring', () => {
     expect(contentScript).toContain("querySelectorAll('source')")
     expect(contentScript).toContain('__baixarhsl_drm__')
     expect(contentScript).toContain('__baixarhsl_media_source__')
+    expect(contentScript).toContain('__baixarhsl_vimeo_playlist__')
     expect(interceptorScript).toContain('requestMediaKeySystemAccess')
     expect(interceptorScript).toContain('setMediaKeys')
     expect(interceptorScript).toContain('MediaSource')
@@ -112,5 +116,27 @@ describe('chrome extension capture wiring', () => {
     expect(backgroundScript).toContain('canDownloadHls')
     expect(backgroundScript).toContain('canDownloadDash')
     expect(backgroundScript).toContain("resolveStreamDetails")
+    expect(backgroundScript).toContain("startBackgroundConversionDownload")
+    expect(backgroundScript).toContain('findBackgroundJobByDedupeKey')
+    expect(backgroundScript).toContain("cache-vimeo-playlist")
+  })
+
+  it('supports cancelling and resuming background conversion jobs from the popup', () => {
+    const popupScript = readExtensionFile('popup.js')
+    const backgroundScript = readExtensionFile('background.js')
+    const downloadWorkerScript = readExtensionFile('download-worker.js')
+
+    expect(popupScript).toContain("action: 'cancelBackgroundDownloadJob'")
+    expect(popupScript).toContain("action: 'resumeBackgroundDownloadJob'")
+    expect(popupScript).toContain('cancel-job')
+    expect(popupScript).toContain('resume-job')
+
+    expect(backgroundScript).toContain("message.action === 'cancelBackgroundDownloadJob'")
+    expect(backgroundScript).toContain("message.action === 'resumeBackgroundDownloadJob'")
+    expect(backgroundScript).toContain("action: 'cancel-background-conversion-job'")
+    expect(backgroundScript).toContain("action: 'run-background-conversion-job'")
+
+    expect(downloadWorkerScript).toContain("message.action === 'cancel-background-conversion-job'")
+    expect(downloadWorkerScript).toContain('Download cancelado pelo usuario.')
   })
 })

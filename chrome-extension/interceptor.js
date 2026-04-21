@@ -69,8 +69,12 @@
     return (
       lower.includes('.m3u8') ||
       lower.includes('.mpd') ||
+      lower.includes('googlevideo.com/videoplayback') ||
+      lower.includes('youtubei/v1/player') ||
+      lower.includes('youtube.com/watch') ||
       lower.includes('vimeo') ||
       lower.includes('/config') ||
+      lower.indexOf('data:application/json;base64,') === 0 ||
       lower.includes('master.json') ||
       lower.includes('manifest') ||
       lower.includes('playlist')
@@ -109,14 +113,21 @@
     var lowerUrl = String(url || '').toLowerCase()
     var lowerType = String(contentType || '').toLowerCase()
     var size = Number(contentLength || 0)
+    var isYoutubePayload = (
+      lowerUrl.includes('youtubei/v1/player') ||
+      lowerUrl.includes('googlevideo.com/videoplayback') ||
+      lowerUrl.indexOf('data:application/json;base64,') === 0
+    )
 
-    if (size > 500000) return false
+    if (size > 500000 && !isYoutubePayload) return false
+    if (size > 4000000 && isYoutubePayload) return false
 
     if (lowerType.includes('json') || lowerType.includes('text') || lowerType.includes('javascript')) {
       return true
     }
 
     return (
+      isYoutubePayload ||
       lowerUrl.includes('vimeo') ||
       lowerUrl.includes('/config') ||
       lowerUrl.includes('master.json') ||
@@ -128,9 +139,32 @@
     return /player\.vimeo\.com\/video\/\d+\/config(?:[?#]|$)/i.test(String(url || ''))
   }
 
+  function isVimeoPlaylistUrl(url) {
+    var lower = String(url || '').toLowerCase()
+    if (!lower.includes('vimeocdn.com')) return false
+    return lower.includes('playlist.json') || lower.includes('master.json')
+  }
+
+  function decodeDataJsonUrl(url) {
+    var raw = String(url || '')
+    if (!/^data:application\/json;base64,/i.test(raw)) return ''
+
+    var commaIndex = raw.indexOf(',')
+    if (commaIndex < 0) return ''
+
+    var base64 = raw.slice(commaIndex + 1)
+    if (!base64) return ''
+
+    try {
+      return window.atob(base64)
+    } catch {
+      return ''
+    }
+  }
+
   function inspectTextResponse(url, contentType, body, source) {
     if (!shouldInspectResponseBody(url, contentType, body ? body.length : 0)) return
-    if (!body || body.length > 500000) return
+    if (!body || body.length > 4000000) return
 
     postDebug('body-inspected', { detail: contentType || '', url: url })
 
@@ -138,6 +172,15 @@
     if (isVimeoConfigUrl(url)) {
       window.postMessage({
         __baixarhsl_vimeo_config__: true,
+        body: body,
+        source: 'interceptor',
+        url: url,
+      }, '*')
+    }
+
+    if (isVimeoPlaylistUrl(url)) {
+      window.postMessage({
+        __baixarhsl_vimeo_playlist__: true,
         body: body,
         source: 'interceptor',
         url: url,
@@ -153,7 +196,13 @@
       return
     }
 
-    var matches = detector.extractStreamMatchesFromText(body, url)
+    var mergedBody = String(body || '')
+    var decodedDataUrl = decodeDataJsonUrl(url)
+    if (decodedDataUrl) {
+      mergedBody = mergedBody + '\n' + decodedDataUrl
+    }
+
+    var matches = detector.extractStreamMatchesFromText(mergedBody, url)
     for (var i = 0; i < matches.length; i++) {
       postMatch(matches[i], source)
     }

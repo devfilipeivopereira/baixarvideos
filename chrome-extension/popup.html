@@ -20,11 +20,9 @@
 
   <div style="padding:14px">
     <div style="border-radius:18px;background:white;box-shadow:0 10px 30px rgba(15,23,42,.08);overflow:hidden">
-      <div style="position:relative;aspect-ratio:16/9;background:#111827">
+      <div id="previewMediaFrame" style="position:relative;aspect-ratio:16/9;background:#f3f4f6;display:none">
         <img id="previewImage" alt="Miniatura do video" style="width:100%;height:100%;object-fit:cover;display:none" />
-        <div id="previewFallback" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase">
-          Aguardando video
-        </div>
+        <div id="previewFallback" style="display:none"></div>
       </div>
 
       <div style="padding:14px">
@@ -58,6 +56,11 @@
       </div>
     </div>
 
+    <div id="backgroundJobsCard" style="margin-top:12px;padding:10px;border:1px solid #e5e7eb;border-radius:14px;background:white">
+      <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">Downloads em segundo plano</div>
+      <div id="backgroundJobsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
     <div style="margin-top:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-size:11px;font-weight:700;color:#374151;letter-spacing:.05em;text-transform:uppercase">Capturas recentes</div>
@@ -85,6 +88,7 @@
   <script src="hls.js"></script>
   <script src="vimeo-playlist.js"></script>
   <script src="hls-download.js"></script>
+  <script src="file-handle-store.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

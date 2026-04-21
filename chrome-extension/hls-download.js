@@ -10,6 +10,20 @@
     return value
   }
 
+  function isCancellationRequested(shouldCancel) {
+    if (typeof shouldCancel !== 'function') return false
+    try {
+      return Boolean(shouldCancel())
+    } catch {
+      return false
+    }
+  }
+
+  function throwIfCancelled(shouldCancel) {
+    if (!isCancellationRequested(shouldCancel)) return
+    throw new Error('Download cancelado pelo usuario.')
+  }
+
   function arrayBufferFromUint8Array(data) {
     return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
   }
@@ -52,6 +66,61 @@
     return options
   }
 
+  async function fetchBytesFromVimeoPlayerFrame(url, tabId) {
+    if (!root.chrome || !root.chrome.scripting || typeof root.chrome.scripting.executeScript !== 'function') {
+      return null
+    }
+
+    if (typeof tabId !== 'number' || tabId <= 0) {
+      return null
+    }
+
+    try {
+      var scriptResults = await root.chrome.scripting.executeScript({
+        target: {
+          allFrames: true,
+          tabId: tabId,
+        },
+        world: 'MAIN',
+        func: function(segmentUrl) {
+          if (typeof window === 'undefined') return null
+          if (window.location.hostname !== 'player.vimeo.com') return null
+
+          return fetch(segmentUrl, {
+            cache: 'no-store',
+            credentials: 'include',
+            referrer: window.location.href,
+            referrerPolicy: 'strict-origin-when-cross-origin',
+          })
+            .then(function(response) {
+              if (!response.ok) return null
+              return response.arrayBuffer()
+            })
+            .then(function(buffer) {
+              if (!buffer) return null
+              return Array.from(new Uint8Array(buffer))
+            })
+            .catch(function() {
+              return null
+            })
+        },
+        args: [url],
+      })
+
+      if (!Array.isArray(scriptResults)) return null
+
+      for (var index = 0; index < scriptResults.length; index += 1) {
+        var entry = scriptResults[index]
+        if (!entry || !Array.isArray(entry.result) || entry.result.length === 0) continue
+        return new Uint8Array(entry.result)
+      }
+    } catch (error) {
+      console.log('[BaixarHSL] fallback de segmento Vimeo via frame falhou:', error && error.message)
+    }
+
+    return null
+  }
+
   async function fetchText(url) {
     var response = await fetch(url, buildFetchOptions(url))
 
@@ -65,13 +134,24 @@
     return response.text()
   }
 
-  async function fetchBytes(url, extraHeaders) {
+  async function fetchBytes(url, extraHeaders, context) {
     var response = await fetch(url, buildFetchOptions(url, extraHeaders))
 
     if (!response.ok) {
+      if (response.status === 403 && isVimeoCdnUrl(url)) {
+        var frameBytes = await fetchBytesFromVimeoPlayerFrame(
+          url,
+          context && typeof context.tabId === 'number' ? context.tabId : -1
+        )
+        if (frameBytes && frameBytes.length > 0) {
+          console.log('[BaixarHSL] segmento Vimeo baixado via fallback do frame player.vimeo.com')
+          return frameBytes
+        }
+      }
+
       throw new Error(
         'Falha ao baixar segmento: HTTP ' + response.status +
-        ' → ' + String(url).slice(0, 150)
+        ' -> ' + String(url).slice(0, 150)
       )
     }
 
@@ -160,8 +240,9 @@
     }
   }
 
-  async function writeMediaResources(ffmpeg, workDir, resources, onStatus) {
+  async function writeMediaResources(ffmpeg, workDir, resources, onStatus, context, shouldCancel) {
     for (var index = 0; index < resources.length; index += 1) {
+      throwIfCancelled(shouldCancel)
       var resource = resources[index]
       var percent = resources.length > 0
         ? Math.round((index / resources.length) * 60)
@@ -171,12 +252,14 @@
         onStatus(percent, 'Baixando segmentos ' + (index + 1) + '/' + resources.length + '...')
       }
 
-      var bytes = await fetchBytes(resource.url)
+      var bytes = await fetchBytes(resource.url, null, context)
+      throwIfCancelled(shouldCancel)
       await ffmpeg.writeFile(workDir + '/' + resource.filename, bytes)
     }
   }
 
-  async function runFfmpegPipeline(ffmpeg, inputPath, outputPath) {
+  async function runFfmpegPipeline(ffmpeg, inputPath, outputPath, shouldCancel) {
+    throwIfCancelled(shouldCancel)
     var exitCode = await ffmpeg.exec([
       '-protocol_whitelist',
       'file,crypto,data',
@@ -191,6 +274,7 @@
       outputPath,
     ])
 
+    throwIfCancelled(shouldCancel)
     if (exitCode === 0) return
 
     try {
@@ -199,6 +283,7 @@
       void error
     }
 
+    throwIfCancelled(shouldCancel)
     exitCode = await ffmpeg.exec([
       '-protocol_whitelist',
       'file,crypto,data',
@@ -211,12 +296,14 @@
       outputPath,
     ])
 
+    throwIfCancelled(shouldCancel)
     if (exitCode !== 0) {
       throw new Error('Falha ao converter o stream HLS para MP4.')
     }
   }
 
-  async function runMuxPipeline(ffmpeg, videoPath, audioPath, outputPath) {
+  async function runMuxPipeline(ffmpeg, videoPath, audioPath, outputPath, shouldCancel) {
+    throwIfCancelled(shouldCancel)
     var command = ['-i', videoPath]
 
     if (audioPath) {
@@ -240,12 +327,13 @@
     }
 
     var exitCode = await ffmpeg.exec(command)
+    throwIfCancelled(shouldCancel)
     if (exitCode !== 0) {
       throw new Error('Falha ao montar o MP4 final do Vimeo.')
     }
   }
 
-  async function resolveTrackInitBytes(track) {
+  async function resolveTrackInitBytes(track, context) {
     if (!track || !track.initSegment) return new Uint8Array(0)
 
     var rawValue = String(track.initSegment).trim()
@@ -253,7 +341,7 @@
 
     if (looksLikeUrl(rawValue)) {
       var initUrl = new URL(rawValue, track.baseUrl || undefined).href
-      return fetchBytes(initUrl)
+      return fetchBytes(initUrl, null, context)
     }
 
     try {
@@ -261,7 +349,7 @@
     } catch {
       if (track.baseUrl) {
         try {
-          return fetchBytes(new URL(rawValue, track.baseUrl).href)
+          return fetchBytes(new URL(rawValue, track.baseUrl).href, null, context)
         } catch (urlError) {
           void urlError
         }
@@ -271,18 +359,19 @@
     }
   }
 
-  async function buildTrackBytes(track, statusPrefix, progressStart, progressSpan, onStatus) {
+  async function buildTrackBytes(track, statusPrefix, progressStart, progressSpan, onStatus, context, shouldCancel) {
     if (!track || !Array.isArray(track.segments) || track.segments.length === 0) {
       throw new Error('Faixa segmentada do Vimeo sem segmentos utilizaveis.')
     }
 
     var chunks = []
-    var initBytes = await resolveTrackInitBytes(track)
+    var initBytes = await resolveTrackInitBytes(track, context)
     if (initBytes.length) {
       chunks.push(initBytes)
     }
 
     for (var index = 0; index < track.segments.length; index += 1) {
+      throwIfCancelled(shouldCancel)
       if (onStatus) {
         var ratio = track.segments.length > 0 ? index / track.segments.length : 0
         onStatus(
@@ -291,7 +380,7 @@
         )
       }
 
-      chunks.push(await fetchBytes(track.segments[index]))
+      chunks.push(await fetchBytes(track.segments[index], null, context))
     }
 
     return concatUint8Arrays(chunks)
@@ -299,6 +388,12 @@
 
   async function downloadHlsAsMp4(options) {
     var manifestUrl = options && options.manifestUrl ? String(options.manifestUrl) : ''
+    var context = {
+      tabId: options && typeof options.tabId === 'number' ? options.tabId : -1,
+    }
+    var shouldCancel = options && typeof options.shouldCancel === 'function'
+      ? options.shouldCancel
+      : null
     var onStatus = options && typeof options.onStatus === 'function'
       ? options.onStatus
       : null
@@ -307,11 +402,13 @@
       throw new Error('Manifesto HLS ausente para download.')
     }
 
+    throwIfCancelled(shouldCancel)
     if (onStatus) {
       onStatus(0, 'Preparando stream HLS...')
     }
 
     var mediaManifest = await resolveMediaManifest(manifestUrl)
+    throwIfCancelled(shouldCancel)
     var hlsApi = ensureApi('BaixarHSLHls', root.BaixarHSLHls)
     var extracted = hlsApi.extractMediaEntries(mediaManifest.manifestText, mediaManifest.manifestUrl)
     if (!extracted.resources.length) {
@@ -322,6 +419,7 @@
       onStatus(10, 'Carregando motor de conversao...')
     }
 
+    throwIfCancelled(shouldCancel)
     var ffmpeg = await ensureFfmpeg()
     var workDir = 'job-' + Date.now() + '-' + Math.random().toString(16).slice(2)
     var inputPath = workDir + '/input.m3u8'
@@ -340,24 +438,26 @@
     ffmpeg.on('progress', progressListener)
 
     try {
-      await writeMediaResources(ffmpeg, workDir, extracted.resources, onStatus)
+      await writeMediaResources(ffmpeg, workDir, extracted.resources, onStatus, context, shouldCancel)
 
       if (onStatus) {
         onStatus(65, 'Escrevendo manifesto local...')
       }
 
+      throwIfCancelled(shouldCancel)
       await ffmpeg.writeFile(inputPath, new TextEncoder().encode(extracted.playlistText))
 
       if (onStatus) {
         onStatus(70, 'Montando arquivo MP4...')
       }
 
-      await runFfmpegPipeline(ffmpeg, inputPath, outputPath)
+      await runFfmpegPipeline(ffmpeg, inputPath, outputPath, shouldCancel)
 
       if (onStatus) {
         onStatus(98, 'Finalizando download...')
       }
 
+      throwIfCancelled(shouldCancel)
       var data = await ffmpeg.readFile(outputPath)
       return new Blob([arrayBufferFromUint8Array(data)], { type: 'video/mp4' })
     } finally {
@@ -412,6 +512,12 @@
 
   async function downloadVimeoPlaylistAsMp4(options) {
     var option = options && options.option ? options.option : null
+    var context = {
+      tabId: options && typeof options.tabId === 'number' ? options.tabId : -1,
+    }
+    var shouldCancel = options && typeof options.shouldCancel === 'function'
+      ? options.shouldCancel
+      : null
     var onStatus = options && typeof options.onStatus === 'function'
       ? options.onStatus
       : null
@@ -420,10 +526,12 @@
       throw new Error('Playlist segmentada do Vimeo sem faixa de video selecionada.')
     }
 
+    throwIfCancelled(shouldCancel)
     if (onStatus) {
       onStatus(0, 'Preparando playlist segmentada do Vimeo...')
     }
 
+    throwIfCancelled(shouldCancel)
     var ffmpeg = await ensureFfmpeg()
     var workDir = 'job-vimeo-' + Date.now() + '-' + Math.random().toString(16).slice(2)
     var videoPath = workDir + '/video.mp4'
@@ -446,12 +554,14 @@
     await setVimeoRefererRule()
 
     try {
-      var videoBytes = await buildTrackBytes(option.videoTrack, 'Baixando video', 5, 45, onStatus)
+      throwIfCancelled(shouldCancel)
+      var videoBytes = await buildTrackBytes(option.videoTrack, 'Baixando video', 5, 45, onStatus, context, shouldCancel)
       await ffmpeg.writeFile(videoPath, videoBytes)
 
       var hasAudio = Boolean(option.audioTrack && Array.isArray(option.audioTrack.segments) && option.audioTrack.segments.length > 0)
       if (hasAudio) {
-        var audioBytes = await buildTrackBytes(option.audioTrack, 'Baixando audio', 50, 20, onStatus)
+        throwIfCancelled(shouldCancel)
+        var audioBytes = await buildTrackBytes(option.audioTrack, 'Baixando audio', 50, 20, onStatus, context, shouldCancel)
         await ffmpeg.writeFile(audioPath, audioBytes)
       }
 
@@ -459,12 +569,13 @@
         onStatus(75, 'Combinando video e audio...')
       }
 
-      await runMuxPipeline(ffmpeg, videoPath, hasAudio ? audioPath : '', outputPath)
+      await runMuxPipeline(ffmpeg, videoPath, hasAudio ? audioPath : '', outputPath, shouldCancel)
 
       if (onStatus) {
         onStatus(98, 'Finalizando download...')
       }
 
+      throwIfCancelled(shouldCancel)
       var output = await ffmpeg.readFile(outputPath)
       return new Blob([arrayBufferFromUint8Array(output)], { type: 'video/mp4' })
     } finally {
@@ -649,18 +760,27 @@
 
   async function downloadDashAsMp4(options) {
     var mpdUrl = options && options.mpdUrl ? String(options.mpdUrl) : ''
+    var context = {
+      tabId: options && typeof options.tabId === 'number' ? options.tabId : -1,
+    }
+    var shouldCancel = options && typeof options.shouldCancel === 'function'
+      ? options.shouldCancel
+      : null
     var onStatus = options && typeof options.onStatus === 'function' ? options.onStatus : null
 
     if (!mpdUrl) throw new Error('URL do manifesto DASH ausente.')
 
+    throwIfCancelled(shouldCancel)
     if (onStatus) onStatus(0, 'Preparando stream DASH...')
 
     var mpdText = await fetchText(mpdUrl)
+    throwIfCancelled(shouldCancel)
     var parsed = parseDashManifest(mpdText, mpdUrl)
 
     if (!parsed.videoUrls.length) throw new Error('Manifesto DASH sem segmentos de video.')
 
     if (onStatus) onStatus(5, 'Carregando motor de conversao...')
+    throwIfCancelled(shouldCancel)
     var ffmpeg = await ensureFfmpeg()
     var workDir = 'job-dash-' + Date.now() + '-' + Math.random().toString(16).slice(2)
     var videoPath = workDir + '/video.mp4'
@@ -674,19 +794,23 @@
     var downloaded = 0
 
     for (var vi = 0; vi < parsed.videoUrls.length; vi++) {
+      throwIfCancelled(shouldCancel)
       if (onStatus) onStatus(5 + Math.round((downloaded / totalSegs) * 55), 'Baixando video ' + (vi + 1) + '/' + parsed.videoUrls.length + '...')
-      videoChunks.push(await fetchBytes(parsed.videoUrls[vi]))
+      videoChunks.push(await fetchBytes(parsed.videoUrls[vi], null, context))
       downloaded++
     }
+    throwIfCancelled(shouldCancel)
     await ffmpeg.writeFile(videoPath, concatUint8Arrays(videoChunks))
 
     var hasAudio = parsed.audioUrls.length > 0
     if (hasAudio) {
       var audioChunks = []
       for (var ai = 0; ai < parsed.audioUrls.length; ai++) {
+        throwIfCancelled(shouldCancel)
         if (onStatus) onStatus(60 + Math.round((ai / parsed.audioUrls.length) * 15), 'Baixando audio ' + (ai + 1) + '/' + parsed.audioUrls.length + '...')
-        audioChunks.push(await fetchBytes(parsed.audioUrls[ai]))
+        audioChunks.push(await fetchBytes(parsed.audioUrls[ai], null, context))
       }
+      throwIfCancelled(shouldCancel)
       await ffmpeg.writeFile(audioPath, concatUint8Arrays(audioChunks))
     }
 
@@ -700,8 +824,9 @@
     ffmpeg.on('progress', progressListener)
 
     try {
-      await runMuxPipeline(ffmpeg, videoPath, hasAudio ? audioPath : '', outputPath)
+      await runMuxPipeline(ffmpeg, videoPath, hasAudio ? audioPath : '', outputPath, shouldCancel)
       if (onStatus) onStatus(98, 'Finalizando download...')
+      throwIfCancelled(shouldCancel)
       var output = await ffmpeg.readFile(outputPath)
       return new Blob([arrayBufferFromUint8Array(output)], { type: 'video/mp4' })
     } finally {
@@ -712,25 +837,53 @@
   function saveBlobToDisk(blob, filename) {
     return new Promise(function(resolve, reject) {
       var objectUrl = URL.createObjectURL(blob)
-
-      chrome.downloads.download({
-        filename: filename,
-        saveAs: true,
-        url: objectUrl,
-      }, function(downloadId) {
-        var error = chrome.runtime.lastError
-
+      var revokeObjectUrl = function() {
         setTimeout(function() {
           URL.revokeObjectURL(objectUrl)
         }, 15000)
+      }
 
-        if (error) {
-          reject(new Error(error.message || 'Falha ao iniciar o download do arquivo convertido.'))
+      var downloadsApi = root.chrome && root.chrome.downloads
+      if (downloadsApi && typeof downloadsApi.download === 'function') {
+        downloadsApi.download({
+          filename: filename,
+          saveAs: true,
+          url: objectUrl,
+        }, function(downloadId) {
+          var error = chrome.runtime && chrome.runtime.lastError
+          revokeObjectUrl()
+
+          if (error) {
+            reject(new Error(error.message || 'Falha ao iniciar o download do arquivo convertido.'))
+            return
+          }
+
+          resolve(downloadId)
+        })
+        return
+      }
+
+      try {
+        if (!root.document || !root.document.body) {
+          revokeObjectUrl()
+          reject(new Error('API de download indisponivel neste contexto do worker.'))
           return
         }
 
-        resolve(downloadId)
-      })
+        var link = root.document.createElement('a')
+        link.href = objectUrl
+        link.download = String(filename || 'video.mp4')
+        link.rel = 'noopener'
+        link.style.display = 'none'
+        root.document.body.appendChild(link)
+        link.click()
+        root.document.body.removeChild(link)
+        revokeObjectUrl()
+        resolve(null)
+      } catch (error) {
+        revokeObjectUrl()
+        reject(error instanceof Error ? error : new Error('Falha ao salvar o arquivo convertido.'))
+      }
     })
   }
 
@@ -749,3 +902,4 @@
     module.exports = api
   }
 })(typeof self !== 'undefined' ? self : globalThis)
+
